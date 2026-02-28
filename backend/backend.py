@@ -14,23 +14,48 @@ import io
 import base64
 import tempfile
 
+MODEL_ID = "Qwen/Qwen3-VL-32B-Instruct"
+MODEL_CACHE_DIR = "/root/model_cache"
+
+
+def download_model_weights():
+    """Runs during image build to bake model weights into the image layer."""
+    import os
+    from huggingface_hub import snapshot_download
+    token = os.environ.get("HF_TOKEN")
+    snapshot_download(
+        MODEL_ID,
+        local_dir=MODEL_CACHE_DIR,
+        token=token,
+        # skip old-format weights, use safetensors
+        ignore_patterns=["*.pt", "*.bin"],
+    )
+
+
 video_image = (
     modal.Image.from_registry(
         "nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04",
         add_python="3.11",
     )
+    .apt_install("git")
     .run_commands(
         "pip install --upgrade pip",
         "pip install torch --index-url https://download.pytorch.org/whl/cu121",
     )
     .pip_install(
-        "transformers>=4.48.2",
+        "git+https://github.com/huggingface/transformers.git",
         "accelerate",
         "qwen-vl-utils",
         "outlines",
         "pydantic",
         "decord",
         "torchvision",
+        "huggingface_hub",
+    )
+    # Bake model weights into the image at build time (runs once, cached forever)
+    .run_function(
+        download_model_weights,
+        secrets=[modal.Secret.from_name("huggingface-secret")],
     )
 )
 tts_image = (
@@ -114,26 +139,28 @@ class BiomechanicalAnalysisResponse(BiomechanicalAnalysisLLM):
 
 
 @app.cls(
-    # Choose GPU based on model size (A10G is usually enough for 7B)
+    # Use two B200s for the massive 122B model
     gpu="B200",
     image=video_image,
     timeout=600,  # Max 10 mins per analysis
+    ephemeral_disk=512 * 1024,  # Minimum 512 GiB required by Modal
+    secrets=[modal.Secret.from_name("huggingface-secret")]
 )
 class VideoAnalyzer:
     @modal.enter()
     def load_model(self):
-        # This only runs once when the container starts
-        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+        from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 
-        MODEL_ID = "Qwen/Qwen2.5-VL-7B-Instruct"
-        self.raw_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            MODEL_ID, torch_dtype="auto", device_map="auto"
+        # Weights are baked into the image at MODEL_CACHE_DIR — no download at runtime
+        self.raw_model = Qwen3VLForConditionalGeneration.from_pretrained(
+            MODEL_CACHE_DIR,
+            torch_dtype="auto",
+            device_map="auto",
         )
-        self.processor = AutoProcessor.from_pretrained(MODEL_ID)
+        self.processor = AutoProcessor.from_pretrained(MODEL_CACHE_DIR)
 
     @modal.method()
     def analyze(self, video_bytes: bytes, user_description: str, activity_type: str, previous_analysis: str = ""):
-        from qwen_vl_utils import process_vision_info
         import json
 
         with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
@@ -149,28 +176,88 @@ class VideoAnalyzer:
             schema_json = BiomechanicalAnalysisLLM.model_json_schema()
             prompt += f"\n\nOutput ONLY a valid JSON object matching this JSON Schema:\n{json.dumps(schema_json)}"
 
+            # --- Frame extraction with decord ---
+            import numpy as np
+            from decord import VideoReader, cpu as decord_cpu
+            from PIL import Image as PILImage
+
+            vr = VideoReader(tmp.name, ctx=decord_cpu(0))
+            actual_fps = vr.get_avg_fps()
+            total_frames = len(vr)
+            total_duration = total_frames / actual_fps
+
+            # B200 has 180GB VRAM — sample 24 fps for first 5 seconds
+            end_time = min(5.0, total_duration)
+            nframes = max(1, int(end_time * 24.0))
+            frame_indices = np.linspace(0, min(int(end_time * actual_fps), total_frames) - 1,
+                                        num=nframes, dtype=int).tolist()
+            raw_frames = vr.get_batch(frame_indices).asnumpy()
+            video_frames = [PILImage.fromarray(f) for f in raw_frames]
+            del vr
+
+            # Build messages with pre-decoded PIL frames
             messages = [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "video", "video": tmp.name, "fps": 2.0},
+                        {"type": "video", "video": video_frames},
                         {"type": "text", "text": prompt},
                     ],
                 }
             ]
 
-            text_prompt = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            image_inputs, video_inputs = process_vision_info(messages)
-
-            inputs = self.processor(
-                text=[text_prompt],
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
+            # === Official Qwen3-VL pipeline (from model card) ===
+            # Uses processor.apply_chat_template with tokenize=True in ONE step.
+            # This is DIFFERENT from Qwen2.5-VL which used a two-step process:
+            #   1. apply_chat_template(tokenize=False) + process_vision_info()
+            #   2. processor(text=..., videos=...)
+            # The one-step approach correctly generates mm_token_type_ids and
+            # splits video_grid_thw per-frame as Qwen3-VL requires.
+            inputs = self.processor.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_dict=True,
                 return_tensors="pt",
             ).to("cuda")
+
+            # Debug: log processor output
+            print(f"[DEBUG] Processor output keys: {list(inputs.keys())}")
+            for k, v in inputs.items():
+                if hasattr(v, 'shape'):
+                    print(f"[DEBUG]   {k}: shape={v.shape}, dtype={v.dtype}")
+
+            # Deep debug: count type-2 groups in mm_token_type_ids
+            import itertools
+            import torch
+            mm_types = inputs["mm_token_type_ids"][0].tolist()
+            type_groups = [(k, len(list(g)))
+                           for k, g in itertools.groupby(mm_types)]
+            video_groups = [(k, l) for k, l in type_groups if k == 2]
+            print(f"[DEBUG] Total modality groups: {len(type_groups)}")
+            print(f"[DEBUG] Video (type=2) groups: {len(video_groups)}")
+            print(f"[DEBUG] video_grid_thw values: {inputs['video_grid_thw']}")
+            print(
+                f"[DEBUG] video_grid_thw entries: {inputs['video_grid_thw'].shape[0]}")
+
+            # FIX: Qwen3-VL creates per-frame <|vision_start|>...<|vision_end|> blocks,
+            # so each frame is a separate type-2 group needing its own grid_thw entry.
+            # The processor outputs one [T, H, W] for the whole video — we need to
+            # expand it to num_frame_groups entries of [1, H, W] each.
+            n_video_groups = len(video_groups)
+            n_grid_entries = inputs["video_grid_thw"].shape[0]
+            if n_video_groups > n_grid_entries:
+                print(
+                    f"[DEBUG] MISMATCH: {n_video_groups} video groups but {n_grid_entries} grid entries. Expanding...")
+                orig_thw = inputs["video_grid_thw"][0]  # [T, H, W]
+                t_val, h_val, w_val = orig_thw[0].item(
+                ), orig_thw[1].item(), orig_thw[2].item()
+                # Each frame group gets [1, H, W]
+                expanded = torch.tensor(
+                    [[1, h_val, w_val]] * n_video_groups, dtype=orig_thw.dtype, device=orig_thw.device)
+                inputs["video_grid_thw"] = expanded
+                print(
+                    f"[DEBUG] Expanded video_grid_thw to shape: {expanded.shape}")
 
             # Native Hugging Face generation
             generated_ids = self.raw_model.generate(
@@ -196,7 +283,7 @@ class VideoAnalyzer:
 
 
 @app.function(image=modal.Image.debian_slim().pip_install("fastapi", "python-multipart"), timeout=600)
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 async def analyze(request: Request):
     import json
     import asyncio
