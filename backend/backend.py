@@ -93,7 +93,7 @@ class VisualOverlay(BaseModel):
 class FeedbackPointLLM(BaseModel):
     mistake_timestamp_ms: int
     coaching_script: str
-    visuals: VisualOverlay
+    visuals: Optional[VisualOverlay] = None
 
 
 class FeedbackPointResponse(FeedbackPointLLM):
@@ -124,20 +124,17 @@ class VideoAnalyzer:
     def load_model(self):
         # This only runs once when the container starts
         from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-        import outlines
 
         MODEL_ID = "Qwen/Qwen2.5-VL-7B-Instruct"
         self.raw_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             MODEL_ID, torch_dtype="auto", device_map="auto"
         )
         self.processor = AutoProcessor.from_pretrained(MODEL_ID)
-        self.model = outlines.from_transformers(
-            self.raw_model, self.processor.tokenizer
-        )
 
     @modal.method()
     def analyze(self, video_bytes: bytes, user_description: str, activity_type: str, previous_analysis: str = ""):
         from qwen_vl_utils import process_vision_info
+        import json
 
         with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
             tmp.write(video_bytes)
@@ -148,6 +145,9 @@ class VideoAnalyzer:
                 prompt += f"\n\nHere is the context from the user's PREVIOUS attempt:\n{previous_analysis}\n\nUse this to compute the improvement_delta and avoid repeating the exact same feedback if they improved."
 
             prompt += "\n\nProvide coaching feedback. All coordinates for visuals MUST be relative floats between 0.0 and 1.0 (e.g. [0.4, 0.5]), where [0.0, 0.0] is top-left and [1.0, 1.0] is bottom-right."
+
+            schema_json = BiomechanicalAnalysisLLM.model_json_schema()
+            prompt += f"\n\nOutput ONLY a valid JSON object matching this JSON Schema:\n{json.dumps(schema_json)}"
 
             messages = [
                 {
@@ -163,22 +163,39 @@ class VideoAnalyzer:
                 messages, tokenize=False, add_generation_prompt=True
             )
             image_inputs, video_inputs = process_vision_info(messages)
+
             inputs = self.processor(
                 text=[text_prompt],
                 images=image_inputs,
                 videos=video_inputs,
+                padding=True,
                 return_tensors="pt",
             ).to("cuda")
 
-            # Use Outlines to force the JSON schema
-            result = self.model(
-                **inputs,
-                output_type=BiomechanicalAnalysisLLM,
-            )
-        return result.model_dump()
+            # Native Hugging Face generation
+            generated_ids = self.raw_model.generate(
+                **inputs, max_new_tokens=4096)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = self.processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )[0]
+
+            # Clean markdown code blocks if the LLM added them
+            import re
+            json_match = re.search(
+                r'```json\n*(.*?)\n*```', output_text, re.DOTALL)
+            clean_json_str = json_match.group(
+                1) if json_match else output_text.strip()
+
+            # Validate and dump
+            result = BiomechanicalAnalysisLLM.model_validate_json(
+                clean_json_str).model_dump()
+        return result
 
 
-@app.function(image=modal.Image.debian_slim().pip_install("fastapi", "python-multipart"))
+@app.function(image=modal.Image.debian_slim().pip_install("fastapi", "python-multipart"), timeout=600)
 @modal.web_endpoint(method="POST")
 async def analyze(request: Request):
     import json
@@ -227,22 +244,23 @@ async def analyze(request: Request):
         return Response(content=json.dumps(llm_response), media_type="application/json")
 
     # 3. Generate TTS for all feedback points concurrently
-    tts_engine = TextToSpeech()
+    # tts_engine = TextToSpeech()
     feedback_points = llm_response.get("feedback_points", [])
 
     # We will gather all the remote calls and wait for them
     # Note: Modal .remote() is synchronous in standard python, so we map over them using .map
 
     # Prepare the scripts
-    scripts = [fp["coaching_script"] for fp in feedback_points]
+    # scripts = [fp["coaching_script"] for fp in feedback_points]
 
     # Run TTS in parallel
-    if scripts:
-        audio_results = []
-        async for res in tts_engine.speak.map.aio(scripts):
-            audio_results.append(res)
-    else:
-        audio_results = []
+    # if scripts:
+    #     audio_results = []
+    #     async for res in tts_engine.speak.map.aio(scripts):
+    #         audio_results.append(res)
+    # else:
+    #     audio_results = []
+    audio_results = [""] * len(feedback_points)
 
     # 4. Construct Final Response
     final_feedback_points = []

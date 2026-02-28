@@ -13,7 +13,7 @@ export interface FeedbackPoint {
             label?: string;
         }>;
         path_points?: Array<[number, number]>;
-    };
+    } | null;
     audio_url: string;
 }
 
