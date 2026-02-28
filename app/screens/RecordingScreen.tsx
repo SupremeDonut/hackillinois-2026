@@ -20,6 +20,7 @@ export default function RecordingScreen() {
     const cameraRef = useRef<CameraView>(null);
     const [isReady, setIsReady] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
+    const [facing, setFacing] = useState<'front' | 'back'>('back');
 
     const [description, setDescription] = useState('My default description for Stage 2');
     const [countdown, setCountdown] = useState(5);
@@ -94,10 +95,20 @@ export default function RecordingScreen() {
                 <CameraView
                     ref={cameraRef}
                     style={S.camera}
-                    facing="back"
+                    facing={facing}
                     mode="video"
                     onCameraReady={() => setIsReady(true)}
                 />
+
+                {/* Flip button — hidden while recording */}
+                {!isRecording && (
+                    <TouchableOpacity
+                        style={S.flipButton}
+                        onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}
+                    >
+                        <Text style={S.flipButtonText}>↺ Flip</Text>
+                    </TouchableOpacity>
+                )}
 
                 {/* Overlay positioned absolutely over the CameraView */}
                 {isRecording && (
@@ -171,5 +182,19 @@ const S = StyleSheet.create({
     },
     stopButton: {
         backgroundColor: Colors.error,
-    }
+    },
+    flipButton: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        borderRadius: 20,
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+    },
+    flipButtonText: {
+        color: Colors.text,
+        fontSize: 14,
+        fontWeight: '600',
+    },
 });
