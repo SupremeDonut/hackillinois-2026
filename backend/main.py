@@ -15,6 +15,7 @@
 """
 
 import modal
+import json
 from fastapi import FastAPI, UploadFile, Form
 from typing import Annotated
 
@@ -38,17 +39,19 @@ async def analyze_endpoint(
     analysis = await video_analyzer.analyze.remote.aio(
         video_bytes, user_description, activity_type
     )
+    analysis = json.loads(analysis)
+    print(analysis)
 
     # Generate Audio Base64
-    tts_worker = modal.Cls.from_name("biomechanics-ai", "TextToSpeech")()
-    audio = await tts_worker.speak.remote.aio(analysis.get("coaching_script", ""))
+    # tts_worker = modal.Cls.from_name("biomechanics-ai", "TextToSpeech")()
+    # audio = await tts_worker.speak.remote.aio(analysis.get("coaching_script", ""))
 
     # Combine and return to React Native
     return {
         "status": "success",
         "analysis": analysis,
         "visuals": {},
-        "audio": audio,
+        "audio": "",
     }
 
 

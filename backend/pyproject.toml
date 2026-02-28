@@ -14,7 +14,6 @@ dependencies = [
     "torch",
     "transformers",
     "qwen-vl-utils",
-    "outlines",
     "pydantic",
     "decord",
     "torchvision",

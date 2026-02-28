@@ -17,10 +17,10 @@ video_image = (
         "transformers>=4.48.2",
         "accelerate",
         "qwen-vl-utils",
-        "outlines",
         "pydantic",
         "decord",
         "torchvision",
+        "outlines",
     )
 )
 tts_image = (
@@ -37,7 +37,7 @@ tts_image = (
 app = modal.App("biomechanics-ai")
 
 
-@app.cls(image=tts_image, gpu="T4", scaledown_window=60)
+@app.cls(image=tts_image, gpu="T4", timeout=600)
 class TextToSpeech:
     @modal.enter()
     def setup(self):
@@ -67,67 +67,66 @@ class TechnicalStats(BaseModel):
 
 
 class BiomechanicalAnalysis(BaseModel):
+    movement_analysis_log: str
     mistake_timestamp_ms: int
     coaching_script: str
     positive_note: str
     progress_score: int
     improvement_delta: int
-    technical_stats: TechnicalStats
+    # technical_stats: TechnicalStats
 
 
 @app.cls(
-    gpu="A10G",  # Choose GPU based on model size (A10G is usually enough for 7B)
+    gpu="L40S",
     image=video_image,
     timeout=600,  # Max 10 mins per analysis
+    scaledown_window=600,
 )
 class VideoAnalyzer:
     @modal.enter()
     def load_model(self):
         # This only runs once when the container starts
-        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
         import outlines
+        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 
         MODEL_ID = "Qwen/Qwen2.5-VL-7B-Instruct"
         self.raw_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             MODEL_ID, torch_dtype="auto", device_map="auto"
         )
-        self.processor = AutoProcessor.from_pretrained(MODEL_ID)
-        self.model = outlines.from_transformers(
-            self.raw_model, self.processor.tokenizer
+        self.processor = AutoProcessor.from_pretrained(
+            MODEL_ID, max_pixels=768 * 28 * 28
         )
+
+        # Wrap with outlines for constrained (structured) generation
+        self.outlines_model = outlines.from_transformers(self.raw_model, self.processor)
+        self.generator = outlines.Generator(self.outlines_model, BiomechanicalAnalysis)
 
     @modal.method()
     def analyze(self, video_bytes: bytes, user_description: str, activity_type: str):
-        from qwen_vl_utils import process_vision_info
+        import outlines
 
-        with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp.write(video_bytes)
-            tmp.flush()
-            prompt = f"Coach for {activity_type}. User goal: {user_description}."
-            messages = [
+            tmp_path = tmp.name
+
+        prompt = f"You are a biomechanics coach for {activity_type}. User goal: {user_description}. Analyze the movement in the video and respond with a structured coaching analysis. Limit responses to 100 words or less."
+
+        # Build a Chat input with the video file path and text prompt
+        # outlines.Chat uses the HF multimodal dict format for transformers models
+        chat_input = outlines.inputs.Chat(
+            [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "video", "video": tmp.name, "fps": 2.0},
+                        {"type": "video", "video": outlines.Video(tmp_path)},
                         {"type": "text", "text": prompt},
                     ],
                 }
             ]
+        )
 
-            text_prompt = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            image_inputs, video_inputs, _ = process_vision_info(messages)
-            inputs = self.processor(
-                text=[text_prompt],
-                images=image_inputs,
-                videos=video_inputs,
-                return_tensors="pt",
-            ).to("cuda")
-
-            # Use Outlines to force the JSON schema
-            result = self.model(
-                **inputs,
-                output_type=BiomechanicalAnalysis,
-            )
-        return result.model_dump()
+        # outlines.Generator enforces the BiomechanicalAnalysis JSON schema
+        # and returns a validated Pydantic model instance directly
+        result: BiomechanicalAnalysis = self.generator(chat_input, max_new_tokens=512)
+        print(result)
+        return result
