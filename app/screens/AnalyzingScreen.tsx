@@ -18,14 +18,15 @@ export default function AnalyzingScreen() {
         let cancelled = false;
 
         const runAnalysis = async () => {
-            // Calls the API service — returns real data if MODAL_API_URL is set,
-            // or instantly falls back to mock_response.json if it's null or fails.
+            // When previousData is present and no real backend is set,
+            // use the retry mock so the improvement delta UI can be tested.
             const data = await uploadVideo({
                 videoUri,
                 activityType,
                 description,
                 previousData,
-            });
+                _useMockRetry: !!previousData,  // hint to api.ts to use the retry payload
+            } as any);
 
             if (!cancelled) {
                 navigation.replace('Playback', {
