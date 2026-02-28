@@ -17,8 +17,11 @@
 import modal
 from fastapi import FastAPI, UploadFile, Form
 from typing import Annotated
+from elevenlabs.client import ElevenLabs
+import os
+import base64
 
-image = modal.Image.debian_slim().uv_pip_install("fastapi[standard]")
+image = modal.Image.debian_slim().uv_pip_install("fastapi[standard]", "elevenlabs")
 app = modal.App("motion-coach")
 web_app = FastAPI()
 
@@ -40,19 +43,23 @@ async def analyze_endpoint(
     )
 
     # Generate Audio Base64
-    tts_worker = modal.Cls.from_name("biomechanics-ai", "TextToSpeech")()
-    audio = await tts_worker.speak.remote.aio(analysis.get("coaching_script", ""))
+    client = ElevenLabs(api_key=os.environ["ELEVEN_API_KEY"])
+    audio_gen = client.text_to_speech.convert(
+        text=analysis["coaching_script"], voice_id="ZthjuvLPty3kTMaNKVKb"
+    )
+    audio_bytes = b"".join(list(audio_gen))
+    base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
 
     # Combine and return to React Native
     return {
         "status": "success",
         "analysis": analysis,
         "visuals": {},
-        "audio": audio,
+        "audio": base64_audio,
     }
 
 
-@app.function(image=image)
+@app.function(image=image, secrets=[modal.Secret.from_name("custom-secret")])
 @modal.asgi_app()
 def fastapi_app():
     return web_app
