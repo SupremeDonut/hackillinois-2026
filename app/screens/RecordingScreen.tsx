@@ -1,80 +1,179 @@
-/**
- * ==============================================================================
- * 🎥 [DEV 1/DEV 2] CAMERA AND UPLOAD SCREEN (app/screens/RecordingScreen.tsx)
- * ==============================================================================
- * Purpose:
- *   Handles the `expo-camera` capturing logic. The user has 5 seconds maximum
- *   to record their physical action (e.g., throwing a baseball).
- *
- * Responsibilities:
- *   1. Ask for camera/mic permissions.
- *   2. Render the <CameraView> properly mapped to the screen.
- *   3. Enforce the 5-second countdown timer to keep the app snappy.
- *   4. Feed the resulting file URI to `services/api.ts` to push to Modal.
- *
- * The Aspect Ratio Trap (CRITICAL):
- *   - Most camera sensors do not match a phone screen. E.g., a phone screen
- *     is 19.5:9, but the camera captures natively at 4:3 or 16:9.
- *   - If you let React Native dynamically stretch (`resizeMode="cover"`) the 
- *     video, the X/Y coordinate math that Dev 3 is building will BREAK.
- *   - Dev 1 MUST lock the camera's aspect ratio (e.g., explicitly 16:9) 
- *     so the captured video's bounding-box is exactly known.
- * ==============================================================================
- */
-import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet } from 'react-native';
-// import { CameraView } from 'expo-camera';
-import { uploadVideo } from '../services/api';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, Alert } from 'react-native';
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+
+const screenWidth = Dimensions.get('window').width;
+const cameraHeight = screenWidth * (16 / 9);
+
+const ACTIVITIES = [
+    { id: 'basketball_shot', label: '🏀 Basketball Shot' },
+    { id: 'golf_swing', label: '⛳ Golf Swing' },
+    { id: 'tennis_serve', label: '🎾 Tennis Serve' },
+    { id: 'baseball_pitch', label: '⚾ Baseball Pitch' },
+    { id: 'dance_move', label: '🕺 Dance Move' },
+];
 
 export default function RecordingScreen({ navigation }: any) {
+    const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+    const [micPermission, requestMicPermission] = useMicrophonePermissions();
+
     const [isRecording, setIsRecording] = useState(false);
+    const [timeLeft, setTimeLeft] = useState(5);
+    const [activity, setActivity] = useState(ACTIVITIES[0].id);
 
-    // Starts the camera and caps the session at 5 seconds
-    const startRecording = async () => {
-        // Implement 5-second max recording logic here
-        console.log("Started recording...");
-    };
+    const cameraRef = useRef<CameraView>(null);
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  # Callback when recording completes.Takes the raw file string.
-    const handleUpload = async (fileUri: string) => {
-        // 1. Gather context
-        const metadata = {
-            activity_type: 'tennis_serve',
-            user_description: 'fix my serve'
+    useEffect(() => {
+        if (!cameraPermission?.granted) requestCameraPermission();
+        if (!micPermission?.granted) requestMicPermission();
+    }, [cameraPermission, micPermission]);
+
+    useEffect(() => {
+        if (isRecording && timeLeft > 0) {
+            timerRef.current = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+        } else if (isRecording && timeLeft === 0) {
+            stopRecording();
+        }
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
         };
+    }, [isRecording, timeLeft]);
 
-        // 2. Upload file via the 'multipart/form-data' API handler
-        // const result = await uploadVideo(fileUri, metadata);
-
-        // 3. Move the user to the Playback engine and pass the Modal response
-        // navigation.navigate('Playback', { analysis: result });
+    const startRecording = async () => {
+        if (!cameraRef.current) return;
+        setIsRecording(true);
+        setTimeLeft(5);
+        try {
+            const video = await cameraRef.current.recordAsync({ maxDuration: 5 });
+            if (video && video.uri) {
+                handleUpload(video.uri);
+            }
+        } catch (e) {
+            console.error(e);
+            setIsRecording(false);
+            Alert.alert("Error", "Failed to record video.");
+        }
     };
+
+    const stopRecording = () => {
+        if (cameraRef.current) {
+            cameraRef.current.stopRecording();
+        }
+    };
+
+    const handleUpload = (fileUri: string) => {
+        setIsRecording(false);
+        const metadata = {
+            activity_type: activity,
+            user_description: 'I want to improve my form',
+        };
+        // Navigate to Analyzing screen with the uri and metadata
+        navigation.replace('Analyzing', { fileUri, metadata });
+    };
+
+    if (!cameraPermission?.granted || !micPermission?.granted) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <Text style={styles.permissionText}>We need camera and mic permissions to coach you.</Text>
+                <TouchableOpacity style={styles.recordBtn} onPress={() => { requestCameraPermission(); requestMicPermission(); }}>
+                    <Text style={styles.recordBtnText}>Grant Permissions</Text>
+                </TouchableOpacity>
+            </SafeAreaView>
+        );
+    }
 
     return (
-        <View style={styles.container}>
-            {/* Dev 1: Insert CameraView here locked to 16:9 */}
-            <Text style={styles.text}>Recording Screen</Text>
-            <Text style={styles.subtext}>(CameraView goes here)</Text>
+        <SafeAreaView style={styles.container}>
+            <View style={styles.header}>
+                <Text style={styles.title}>Record Attempt</Text>
+                <Text style={styles.subtitle}>Keep the subject fully in frame.</Text>
+            </View>
 
-            <Button title="Record (5s)" onPress={startRecording} />
-        </View>
+            {/* Camera View locked to 16:9 */}
+            <View style={styles.cameraContainer}>
+                <CameraView
+                    ref={cameraRef}
+                    style={styles.camera}
+                    mode="video"
+                />
+
+                {/* Visual Overlays for Recording */}
+                {isRecording && (
+                    <View style={styles.recordingOverlay}>
+                        <View style={styles.recDot} />
+                        <Text style={styles.timeText}>00:0{timeLeft}</Text>
+                        <Text style={styles.warningText}>⚠️ HOLD PERFECTLY STILL</Text>
+                    </View>
+                )}
+            </View>
+
+            {/* Controls */}
+            <View style={styles.controls}>
+                <View style={styles.pickerContainer}>
+                    {ACTIVITIES.map(act => (
+                        <TouchableOpacity
+                            key={act.id}
+                            style={[styles.pickerItem, activity === act.id && styles.pickerItemActive]}
+                            onPress={() => !isRecording && setActivity(act.id)}
+                        >
+                            <Text style={[styles.pickerText, activity === act.id && styles.pickerTextActive]}>
+                                {act.label}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                {!isRecording ? (
+                    <TouchableOpacity style={styles.recordBtn} onPress={startRecording}>
+                        <View style={styles.recordBtnInner} />
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity style={styles.stopBtn} onPress={stopRecording}>
+                        <View style={styles.stopBtnInner} />
+                    </TouchableOpacity>
+                )}
+            </View>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        justifyContent: 'center',
+    container: { flex: 1, backgroundColor: '#09090b' },
+    header: { padding: 20, alignItems: 'center' },
+    title: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 4 },
+    subtitle: { fontSize: 14, color: '#a1a1aa', fontWeight: '500' },
+    permissionText: { color: '#fff', textAlign: 'center', marginTop: 100, marginBottom: 20 },
+
+    cameraContainer: {
+        width: screenWidth,
+        height: cameraHeight,
+        backgroundColor: '#18181b',
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    camera: { flex: 1 },
+    recordingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        borderWidth: 3,
+        borderColor: '#ef4444',
         alignItems: 'center',
-        backgroundColor: '#000',
+        justifyContent: 'flex-start',
+        paddingTop: 20,
     },
-    text: {
-        color: '#fff',
-        fontSize: 20,
-        marginBottom: 10
-    },
-    subtext: {
-        color: '#aaa',
-        marginBottom: 20
-    }
+    recDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444', position: 'absolute', top: 26, left: 20 },
+    timeText: { color: '#ef4444', fontSize: 24, fontWeight: '800', textShadowColor: '#000', textShadowRadius: 4 },
+    warningText: { color: '#fbbf24', fontSize: 16, fontWeight: '800', marginTop: 10, textShadowColor: '#000', textShadowRadius: 4 },
+
+    controls: { flex: 1, justifyContent: 'space-between', paddingBottom: 40, paddingTop: 20 },
+    pickerContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, paddingHorizontal: 20 },
+    pickerItem: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 100, backgroundColor: '#27272a', borderWidth: 1, borderColor: '#3f3f46' },
+    pickerItemActive: { backgroundColor: '#3b82f6', borderColor: '#60a5fa' },
+    pickerText: { color: '#a1a1aa', fontSize: 14, fontWeight: '600' },
+    pickerTextActive: { color: '#ffffff' },
+
+    recordBtn: { alignSelf: 'center', width: 72, height: 72, borderRadius: 36, borderWidth: 4, borderColor: '#ffffff', justifyContent: 'center', alignItems: 'center', backgroundColor: '#ef4444' },
+    recordBtnInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#ef4444' },
+    stopBtn: { alignSelf: 'center', width: 72, height: 72, borderRadius: 36, borderWidth: 4, borderColor: '#ffffff', justifyContent: 'center', alignItems: 'center' },
+    stopBtnInner: { width: 28, height: 28, borderRadius: 4, backgroundColor: '#ef4444' },
 });
