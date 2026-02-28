@@ -1,0 +1,27 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "modal",
+    "kokoro_onnx",
+    "soundfile",
+    "gemini_client",
+    "misaki-fork[en]",
+    "torch",
+    "transformers",
+    "qwen-vl-utils",
+    "outlines",
+    "pydantic",
+    "decord",
+    "torchvision",
+    "python-multipart>=0.0.22",
+    "httpx",
+]
+[tool.pyright]
+venvPath = "."      
+venv = ".venv"      
+typeCheckingMode = "basic"
