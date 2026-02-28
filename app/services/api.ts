@@ -20,7 +20,7 @@ import { AnalysisResponse } from '../types';
 // ─────────────────────────────────────────────────────────────────────────────
 // 👇 CHANGE THIS ONE LINE WHEN THE BACKEND IS READY
 // ─────────────────────────────────────────────────────────────────────────────
-const MODAL_API_URL: string | null = null;
+const MODAL_API_URL: string | null = 'https://jonathantao--biomechanics-ai-analyze.modal.run';
 // const MODAL_API_URL = 'https://YOUR_WORKSPACE--analyze.modal.run';
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -77,9 +77,9 @@ export const uploadVideo = async (params: UploadParams): Promise<AnalysisRespons
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20_000); // 20s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 600_000); // 10 mins timeout
 
-        const response = await fetch(`${MODAL_API_URL}/analyze`, {
+        const response = await fetch(`${MODAL_API_URL}`, {
             method: 'POST',
             body: formData,
             headers: { 'Accept': 'application/json' },

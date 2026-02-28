@@ -4,14 +4,15 @@ export interface FeedbackPoint {
     mistake_timestamp_ms: number;
     coaching_script: string;
     visuals: {
-        focus_point: { x: number; y: number };
-        overlay_type: 'ANGLE_CORRECTION' | 'POSITION_MARKER';
-        vectors: Array<{
+        overlay_type: 'ANGLE_CORRECTION' | 'POSITION_MARKER' | 'PATH_TRACE';
+        focus_point?: { x: number; y: number };
+        vectors?: Array<{
             start: [number, number];
             end: [number, number];
             color: string;
-            label: string;
+            label?: string;
         }>;
+        path_points?: Array<[number, number]>;
     };
     audio_url: string;
 }
