@@ -5,6 +5,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { globalStyles, Colors } from '../styles/theme';
+import SVGOverlay from '../components/SVGOverlay';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Playback'>;
 type PlaybackRouteProp = RouteProp<RootStackParamList, 'Playback'>;
@@ -25,6 +26,9 @@ export default function PlaybackScreen() {
     const [showingFrame, setShowingFrame] = useState(false); // Controls the two-step UI
     const [currentFeedbackIndex, setCurrentFeedbackIndex] = useState(0);
     const [isVideoFinished, setIsVideoFinished] = useState(false);
+
+    // Layout Capture to pass absolute pixel boundaries to the SVG Overlay engine
+    const [videoLayout, setVideoLayout] = useState({ width: 0, height: 0 });
 
     // Derive the current target based on index
     const currentFeedback = data.feedback_points?.[currentFeedbackIndex];
@@ -114,7 +118,13 @@ export default function PlaybackScreen() {
     return (
         <View style={globalStyles.fullScreen}>
 
-            <View style={S.videoContainer}>
+            <View
+                style={S.videoContainer}
+                onLayout={(event) => {
+                    const { width, height } = event.nativeEvent.layout;
+                    setVideoLayout({ width, height });
+                }}
+            >
                 <Video
                     ref={videoRef}
                     style={S.videoPlayer}
@@ -145,10 +155,14 @@ export default function PlaybackScreen() {
                             </View>
                         )}
 
-                        {/* STEP 2: The Visible Frame + SVG Overlay (Dev 3 adds SVG here later) + Continue Button */}
+                        {/* STEP 2: The Visible Frame + SVG Overlay + Continue Button */}
                         {showingFrame && (
                             <View style={S.frameOverlayContainer}>
-                                {/* Dev 3 SVG overlays will mount naturally into this parent canvas later */}
+
+                                <SVGOverlay
+                                    data={currentFeedback.visuals}
+                                    videoLayout={videoLayout}
+                                />
 
                                 <TouchableOpacity
                                     style={[globalStyles.primaryButton, S.floatingContinueButton]}

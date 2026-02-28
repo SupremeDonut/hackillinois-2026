@@ -12,7 +12,20 @@
           "y": 0.4
         },
         "overlay_type": "POSITION_MARKER",
-        "vectors": []
+        "vectors": [
+          {
+            "start": [
+              0.4,
+              0.4
+            ],
+            "end": [
+              0.4,
+              0.6
+            ],
+            "color": "#34C759",
+            "label": "Tuck In"
+          }
+        ]
       },
       "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
     },
@@ -25,9 +38,94 @@
           "y": 0.5
         },
         "overlay_type": "ANGLE_CORRECTION",
-        "vectors": []
+        "vectors": [
+          {
+            "start": [
+              0.5,
+              0.5
+            ],
+            "end": [
+              0.3,
+              0.3
+            ],
+            "color": "#FF3B30",
+            "label": "120°"
+          },
+          {
+            "start": [
+              0.5,
+              0.5
+            ],
+            "end": [
+              0.7,
+              0.3
+            ],
+            "color": "#34C759",
+            "label": "Target: 180°"
+          }
+        ]
       },
       "audio_url": "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg"
+    },
+    {
+      "mistake_timestamp_ms": 3500,
+      "coaching_script": "Watch the arc of your swing here. You are cutting across the ball instead of pushing through it.",
+      "visuals": {
+        "focus_point": {
+          "x": 0.8,
+          "y": 0.2
+        },
+        "overlay_type": "PATH_TRACE",
+        "vectors": [
+          {
+            "start": [
+              0.8,
+              0.2
+            ],
+            "end": [
+              0.6,
+              0.4
+            ],
+            "color": "#FF3B30",
+            "label": "Current Path"
+          },
+          {
+            "start": [
+              0.8,
+              0.2
+            ],
+            "end": [
+              0.5,
+              0.1
+            ],
+            "color": "#34C759",
+            "label": "Ideal Path"
+          }
+        ],
+        "path_points": [
+          [
+            0.8,
+            0.2
+          ],
+          [
+            0.7,
+            0.3
+          ],
+          [
+            0.6,
+            0.4
+          ],
+          [
+            0.55,
+            0.5
+          ],
+          [
+            0.52,
+            0.6
+          ]
+        ]
+      },
+      "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3"
     }
   ]
 }
