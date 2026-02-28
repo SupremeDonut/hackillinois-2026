@@ -92,8 +92,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#000',
     },
     videoContainer: {
+        flex: 1,
         width: '100%',
-        aspectRatio: 16 / 9,
         backgroundColor: '#333',
     },
     videoPlaceholder: {
