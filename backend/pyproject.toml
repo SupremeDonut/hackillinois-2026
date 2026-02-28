@@ -5,13 +5,21 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "elevenlabs",
     "fastapi",
     "modal",
     "kokoro_onnx",
     "soundfile",
     "gemini_client",
-    "misaki-fork[en]"
+    "misaki-fork[en]",
+    "torch",
+    "transformers",
+    "qwen-vl-utils",
+    "outlines",
+    "pydantic",
+    "decord",
+    "torchvision",
+    "python-multipart>=0.0.22",
+    "httpx",
 ]
 [tool.pyright]
 venvPath = "."      
