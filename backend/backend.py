@@ -14,9 +14,27 @@ import io
 import base64
 import tempfile
 
+MODEL_ID = "Qwen/Qwen3-VL-32B-Instruct"
+MODEL_CACHE_DIR = "/root/model_cache"
+
+
+def download_model_weights():
+    """Runs during image build to bake model weights into the image layer."""
+    import os
+    from huggingface_hub import snapshot_download
+    token = os.environ.get("HF_TOKEN")
+    snapshot_download(
+        MODEL_ID,
+        local_dir=MODEL_CACHE_DIR,
+        token=token,
+        # skip old-format weights, use safetensors only
+        ignore_patterns=["*.pt", "*.bin"],
+    )
+
 # ==============================================================================
 # 🦴 POSE DETECTION HELPER FUNCTIONS
 # ==============================================================================
+
 
 # COCO skeleton connections (17 keypoints total)
 COCO_SKELETON = [
@@ -37,29 +55,29 @@ def keypoints_to_vectors(
 ) -> List[dict]:
     """Convert YOLO keypoints to app's vector format."""
     vectors = []
-    
+
     for person_idx, person in enumerate(xy):
         for a, b in COCO_SKELETON:
             i = a - 1  # Convert to 0-indexed
             j = b - 1
-            
+
             if i >= len(person) or j >= len(person):
                 continue
-                
+
             x1, y1 = person[i]
             x2, y2 = person[j]
-            
+
             # Skip if confidence too low
             if conf is not None and (conf[person_idx][i] < min_conf or conf[person_idx][j] < min_conf):
                 continue
-            
+
             # Normalize coordinates to 0-1 range
             vectors.append({
                 "start": [float(x1 / width), float(y1 / height)],
                 "end": [float(x2 / width), float(y2 / height)],
                 "color": color
             })
-    
+
     return vectors
 
 
@@ -67,14 +85,14 @@ def get_keypoint_coords(xy: list, conf: list, keypoint_idx: int, width: int, hei
     """Get normalized coordinates for a specific keypoint (0-indexed)."""
     if not xy or len(xy) == 0:
         return None
-    
+
     person = xy[0]  # First person
     if keypoint_idx >= len(person):
         return None
-    
+
     if conf and conf[0][keypoint_idx] < 0.15:
         return None
-    
+
     x, y = person[keypoint_idx]
     return (float(x / width), float(y / height))
 
@@ -93,7 +111,7 @@ def snap_correction_vectors_to_skeleton(
     """
     if not xy or len(xy) == 0:
         return visuals
-    
+
     # COCO keypoint indices (0-indexed)
     KEYPOINTS = {
         "nose": 0, "left_eye": 1, "right_eye": 2, "left_ear": 3, "right_ear": 4,
@@ -101,7 +119,7 @@ def snap_correction_vectors_to_skeleton(
         "left_wrist": 9, "right_wrist": 10, "left_hip": 11, "right_hip": 12,
         "left_knee": 13, "right_knee": 14, "left_ankle": 15, "right_ankle": 16
     }
-    
+
     # Map body part mentions to keypoint groups
     BODY_PART_KEYWORDS = {
         "back": ["left_shoulder", "right_shoulder", "left_hip", "right_hip"],
@@ -119,41 +137,42 @@ def snap_correction_vectors_to_skeleton(
         "head": ["nose", "left_ear", "right_ear"],
         "neck": ["nose", "left_shoulder", "right_shoulder"],
     }
-    
+
     vectors = visuals.get("vectors", [])
     if not vectors:
         return visuals
-    
+
     # Identify which body part is being corrected from the coaching script
     script_lower = coaching_script.lower()
     target_keypoints = []
-    
+
     for body_part, kp_names in BODY_PART_KEYWORDS.items():
         if body_part in script_lower:
             target_keypoints.extend(kp_names)
-            print(f"[Snap] Detected '{body_part}' in script, targeting keypoints: {kp_names}")
-    
+            print(
+                f"[Snap] Detected '{body_part}' in script, targeting keypoints: {kp_names}")
+
     # If no body part detected, fall back to finding closest keypoints
     if not target_keypoints:
         print(f"[Snap] No body part keywords found in script, using proximity matching")
         target_keypoints = list(KEYPOINTS.keys())
-    
+
     # Separate skeleton and correction vectors
     correction_vectors = []
     skeleton_vectors = []
-    
+
     for vec in vectors:
         color = vec.get("color", "").lower()
         if color in ["red", "#ff0000", "#ff4d4d", "#ff884d"] or "current" in str(vec.get("label", "")).lower():
             correction_vectors.append(vec)
         else:
             skeleton_vectors.append(vec)
-    
+
     if not correction_vectors:
         return visuals
-    
+
     print(f"[Snap] Processing {len(correction_vectors)} correction vectors...")
-    
+
     # Map keypoints to their connected neighbors in the skeleton
     KEYPOINT_CONNECTIONS = {
         "left_shoulder": ["left_elbow", "left_hip"],
@@ -169,46 +188,49 @@ def snap_correction_vectors_to_skeleton(
         "left_ankle": ["left_knee"],
         "right_ankle": ["right_knee"],
     }
-    
+
     snapped_vectors = []
-    
+
     for cvec in correction_vectors:
         start = cvec.get("start", [0.5, 0.5])
-        
+
         # Find the target keypoint that matches the body part mentioned in script
         best_kp_coords = None
         best_kp_name = None
         best_kp_idx = None
         min_dist = float('inf')
-        
+
         for kp_name in target_keypoints:
             if kp_name in KEYPOINTS:
                 kp_idx = KEYPOINTS[kp_name]
-                kp_coords = get_keypoint_coords(xy, conf, kp_idx, width, height)
-                
+                kp_coords = get_keypoint_coords(
+                    xy, conf, kp_idx, width, height)
+
                 if kp_coords:
                     # Prioritize keypoints that match the coaching context
-                    dist = ((start[0] - kp_coords[0])**2 + (start[1] - kp_coords[1])**2)**0.5
+                    dist = ((start[0] - kp_coords[0])**2 +
+                            (start[1] - kp_coords[1])**2)**0.5
                     if dist < min_dist:
                         min_dist = dist
                         best_kp_coords = kp_coords
                         best_kp_name = kp_name
                         best_kp_idx = kp_idx
-        
+
         if best_kp_coords and best_kp_name in KEYPOINT_CONNECTIONS:
             # Find an adjacent keypoint to form the angle
             adjacent_coords = None
             adjacent_name = None
-            
+
             for adj_name in KEYPOINT_CONNECTIONS[best_kp_name]:
                 if adj_name in KEYPOINTS:
                     adj_idx = KEYPOINTS[adj_name]
-                    adj_coords = get_keypoint_coords(xy, conf, adj_idx, width, height)
+                    adj_coords = get_keypoint_coords(
+                        xy, conf, adj_idx, width, height)
                     if adj_coords:
                         adjacent_coords = adj_coords
                         adjacent_name = adj_name
                         break
-            
+
             if adjacent_coords:
                 # Vector 1: Current limb segment (joint → adjacent keypoint)
                 snapped_vectors.append({
@@ -217,18 +239,18 @@ def snap_correction_vectors_to_skeleton(
                     "color": cvec.get("color", "#FF3B30"),
                     "label": "Current"
                 })
-                
+
                 # Vector 2: Target position (joint → corrected position)
                 # Use the correction direction to calculate target endpoint
                 end = cvec.get("end", [0.5, 0.5])
                 dx = end[0] - start[0]
                 dy = end[1] - start[1]
-                
+
                 # Get current segment direction and length
                 curr_dx = adjacent_coords[0] - best_kp_coords[0]
                 curr_dy = adjacent_coords[1] - best_kp_coords[1]
                 segment_length = (curr_dx**2 + curr_dy**2)**0.5
-                
+
                 # Apply correction rotation (scale correction to match segment length)
                 correction_length = (dx**2 + dy**2)**0.5
                 if correction_length > 0:
@@ -242,62 +264,73 @@ def snap_correction_vectors_to_skeleton(
                     angle = math.radians(30)
                     cos_a = math.cos(angle)
                     sin_a = math.sin(angle)
-                    target_x = best_kp_coords[0] + (curr_dx * cos_a - curr_dy * sin_a)
-                    target_y = best_kp_coords[1] + (curr_dx * sin_a + curr_dy * cos_a)
-                
+                    target_x = best_kp_coords[0] + \
+                        (curr_dx * cos_a - curr_dy * sin_a)
+                    target_y = best_kp_coords[1] + \
+                        (curr_dx * sin_a + curr_dy * cos_a)
+
                 snapped_vectors.append({
                     "start": list(best_kp_coords),
                     "end": [target_x, target_y],
                     "color": cvec.get("color", "#FF3B30"),
                     "label": "Target"
                 })
-                
-                print(f"[Snap] ✓ Created angle pair at {best_kp_name}: {best_kp_name}→{adjacent_name} (current) vs target")
+
+                print(
+                    f"[Snap] ✓ Created angle pair at {best_kp_name}: {best_kp_name}→{adjacent_name} (current) vs target")
             else:
                 # No adjacent keypoint found, create single correction vector
                 end = cvec.get("end", [0.5, 0.5])
                 dx = end[0] - start[0]
                 dy = end[1] - start[1]
-                
+
                 snapped_vectors.append({
                     "start": list(best_kp_coords),
                     "end": [best_kp_coords[0] + dx, best_kp_coords[1] + dy],
                     "color": cvec.get("color", "red"),
                     "label": cvec.get("label")
                 })
-                print(f"[Snap] ⚠ No adjacent keypoint for {best_kp_name}, created single vector")
+                print(
+                    f"[Snap] ⚠ No adjacent keypoint for {best_kp_name}, created single vector")
         else:
             # Keep original if no keypoint found
             snapped_vectors.append(cvec)
             print(f"[Snap] ⚠ Could not snap correction, keeping original position")
-    
+
     # Combine skeleton + snapped corrections
     visuals["vectors"] = skeleton_vectors + snapped_vectors
-    
+
     return visuals
 
 # ==============================================================================
+
 
 video_image = (
     modal.Image.from_registry(
         "nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04",
         add_python="3.11",
     )
-    .apt_install("libgl1", "libglib2.0-0", "libsm6", "libxext6", "libxrender1")
+    .apt_install("git", "libgl1", "libglib2.0-0", "libsm6", "libxext6", "libxrender1")
     .run_commands(
         "pip install --upgrade pip",
         "pip install torch --index-url https://download.pytorch.org/whl/cu121",
     )
     .pip_install(
-        "transformers>=4.48.2",
+        "git+https://github.com/huggingface/transformers.git",
         "accelerate",
         "qwen-vl-utils",
         "outlines",
         "pydantic",
         "decord",
         "torchvision",
+        "huggingface_hub",
         "ultralytics",
         "opencv-python-headless",
+    )
+    # Bake model weights into the image at build time (runs once, cached forever)
+    .run_function(
+        download_model_weights,
+        secrets=[modal.Secret.from_name("huggingface-secret")],
     )
 )
 tts_image = (
@@ -381,26 +414,25 @@ class BiomechanicalAnalysisResponse(BiomechanicalAnalysisLLM):
 
 
 @app.cls(
-    # Choose GPU based on model size (A10G is usually enough for 7B)
     gpu="B200",
     image=video_image,
     timeout=600,  # Max 10 mins per analysis
+    ephemeral_disk=512 * 1024,  # Minimum 512 GiB required by Modal for large models
+    secrets=[modal.Secret.from_name("huggingface-secret")],
 )
 class VideoAnalyzer:
     @modal.enter()
     def load_model(self):
-        # This only runs once when the container starts
-        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+        # Weights are baked into the image at MODEL_CACHE_DIR — no download at runtime
+        from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
 
-        MODEL_ID = "Qwen/Qwen2.5-VL-7B-Instruct"
-        self.raw_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            MODEL_ID, torch_dtype="auto", device_map="auto"
+        self.raw_model = Qwen3VLForConditionalGeneration.from_pretrained(
+            MODEL_CACHE_DIR, torch_dtype="auto", device_map="auto"
         )
-        self.processor = AutoProcessor.from_pretrained(MODEL_ID)
+        self.processor = AutoProcessor.from_pretrained(MODEL_CACHE_DIR)
 
     @modal.method()
     def analyze(self, video_bytes: bytes, user_description: str, activity_type: str, previous_analysis: str = "", pose_data: Optional[dict] = None):
-        from qwen_vl_utils import process_vision_info
         import json
 
         with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
@@ -434,28 +466,71 @@ class VideoAnalyzer:
             schema_json = BiomechanicalAnalysisLLM.model_json_schema()
             prompt += f"\n\nOutput ONLY a valid JSON object matching this JSON Schema:\n{json.dumps(schema_json)}"
 
+            # --- Frame extraction with decord ---
+            import numpy as np
+            from decord import VideoReader, cpu as decord_cpu
+            from PIL import Image as PILImage
+
+            vr = VideoReader(tmp.name, ctx=decord_cpu(0))
+            actual_fps = vr.get_avg_fps()
+            total_frames = len(vr)
+            total_duration = total_frames / actual_fps
+
+            # Sample up to 24 fps for the first 5 seconds
+            end_time = min(5.0, total_duration)
+            nframes = max(1, int(end_time * 24.0))
+            frame_indices = np.linspace(
+                0, min(int(end_time * actual_fps), total_frames) - 1,
+                num=nframes, dtype=int
+            ).tolist()
+            raw_frames = vr.get_batch(frame_indices).asnumpy()
+            video_frames = [PILImage.fromarray(f) for f in raw_frames]
+            del vr
+
+            # Build messages with pre-decoded PIL frames
             messages = [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "video", "video": tmp.name, "fps": 2.0},
+                        {"type": "video", "video": video_frames},
                         {"type": "text", "text": prompt},
                     ],
                 }
             ]
 
-            text_prompt = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-            image_inputs, video_inputs = process_vision_info(messages)
-
-            inputs = self.processor(
-                text=[text_prompt],
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
+            # === Official Qwen3-VL pipeline (one-step apply_chat_template) ===
+            # NOTE: This is different from Qwen2.5-VL which used a two-step process:
+            #   1. apply_chat_template(tokenize=False) + process_vision_info()
+            #   2. processor(text=..., videos=...)
+            # The one-step approach correctly generates mm_token_type_ids and
+            # splits video_grid_thw per-frame as Qwen3-VL requires.
+            inputs = self.processor.apply_chat_template(
+                messages,
+                tokenize=True,
+                add_generation_prompt=True,
+                return_dict=True,
                 return_tensors="pt",
             ).to("cuda")
+
+            # Fix: Qwen3-VL creates per-frame vision blocks, each needing its own
+            # grid_thw entry. Expand [1, H, W] → [num_frames, H, W] if mismatched.
+            import itertools
+            import torch
+            mm_types = inputs["mm_token_type_ids"][0].tolist()
+            type_groups = [(k, len(list(g)))
+                           for k, g in itertools.groupby(mm_types)]
+            video_groups = [(k, l) for k, l in type_groups if k == 2]
+            n_video_groups = len(video_groups)
+            n_grid_entries = inputs["video_grid_thw"].shape[0]
+            if n_video_groups > n_grid_entries:
+                orig_thw = inputs["video_grid_thw"][0]
+                t_val, h_val, w_val = orig_thw[0].item(
+                ), orig_thw[1].item(), orig_thw[2].item()
+                expanded = torch.tensor(
+                    [[1, h_val, w_val]] * n_video_groups,
+                    dtype=orig_thw.dtype, device=orig_thw.device
+                )
+                inputs["video_grid_thw"] = expanded
 
             # Native Hugging Face generation
             generated_ids = self.raw_model.generate(
@@ -484,10 +559,11 @@ class VideoAnalyzer:
         """Extract pose keypoints at specific timestamps for LLM context."""
         import cv2
         from ultralytics import YOLO
-        
-        print(f"[Pose] Extracting pose data at {len(timestamps_ms)} timestamps...")
+
+        print(
+            f"[Pose] Extracting pose data at {len(timestamps_ms)} timestamps...")
         model = YOLO("yolo26x-pose.pt")
-        
+
         # COCO keypoint names for clarity
         KEYPOINT_NAMES = [
             "nose", "left_eye", "right_eye", "left_ear", "right_ear",
@@ -495,47 +571,47 @@ class VideoAnalyzer:
             "left_wrist", "right_wrist", "left_hip", "right_hip",
             "left_knee", "right_knee", "left_ankle", "right_ankle"
         ]
-        
+
         detected_poses = {}
-        
+
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp.write(video_bytes)
             tmp.flush()
-            
+
             cap = cv2.VideoCapture(tmp.name)
             if not cap.isOpened():
                 return {"detected_poses": {}}
-            
+
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            
+
             for ts in timestamps_ms:
                 cap.set(cv2.CAP_PROP_POS_MSEC, ts)
                 success, frame = cap.read()
-                
+
                 if not success or frame is None:
                     continue
-                
+
                 results = model(frame, verbose=False, conf=0.15)
-                
+
                 if not results or len(results) == 0:
                     continue
-                
+
                 result = results[0]
                 keypoints = result.keypoints
-                
+
                 if keypoints is None or keypoints.xy is None:
                     continue
-                
+
                 xy = keypoints.xy.cpu().numpy().tolist()
                 conf = keypoints.conf
                 conf = conf.cpu().numpy().tolist() if conf is not None else None
-                
+
                 # Extract first person's keypoints with names
                 if len(xy) > 0:
                     person = xy[0]
                     person_conf = conf[0] if conf else [1.0] * len(person)
-                    
+
                     keypoints_dict = {}
                     for idx, (x, y) in enumerate(person):
                         if idx < len(KEYPOINT_NAMES) and person_conf[idx] > 0.15:
@@ -543,62 +619,66 @@ class VideoAnalyzer:
                                 round(x / width, 3),
                                 round(y / height, 3)
                             ]
-                    
+
                     detected_poses[str(ts)] = {
                         "num_people": len(xy),
                         "keypoints": keypoints_dict
                     }
-                    print(f"[Pose] ✓ Extracted {len(keypoints_dict)} keypoints at {ts}ms")
-            
+                    print(
+                        f"[Pose] ✓ Extracted {len(keypoints_dict)} keypoints at {ts}ms")
+
             cap.release()
-        
+
         return {"detected_poses": detected_poses}
-    
+
     @modal.method()
     def add_pose_overlays(self, video_bytes: bytes, feedback_points: List[dict]) -> List[dict]:
         """Extract pose skeleton for each feedback timestamp and merge with visuals."""
         import cv2
         import numpy as np
         from ultralytics import YOLO
-        
+
         print(f"[Pose] Loading YOLO model...")
         model = YOLO("yolo26x-pose.pt")
-        
+
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp.write(video_bytes)
             tmp.flush()
-            
+
             cap = cv2.VideoCapture(tmp.name)
             if not cap.isOpened():
                 print("[Pose] ERROR: Could not open video")
                 return feedback_points
-            
+
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             fps = cap.get(cv2.CAP_PROP_FPS)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            
-            print(f"[Pose] Video: {width}x{height} @ {fps:.2f}fps, {total_frames} frames")
-            
+
+            print(
+                f"[Pose] Video: {width}x{height} @ {fps:.2f}fps, {total_frames} frames")
+
             for fp_idx, fp in enumerate(feedback_points):
                 timestamp_ms = fp.get("mistake_timestamp_ms", 0)
                 visuals = fp.get("visuals")
                 coaching_script = fp.get("coaching_script", "")
-                
+
                 # If no visuals exist, create a basic structure for the skeleton
                 if not visuals:
-                    print(f"[Pose] Creating empty visuals for feedback point {fp_idx}")
+                    print(
+                        f"[Pose] Creating empty visuals for feedback point {fp_idx}")
                     visuals = {
                         "overlay_type": "POSITION_MARKER",
                         "focus_point": None,
                         "vectors": []
                     }
                     fp["visuals"] = visuals
-                
+
                 if not timestamp_ms:
-                    print(f"[Pose] Skipping feedback point {fp_idx}: no timestamp")
+                    print(
+                        f"[Pose] Skipping feedback point {fp_idx}: no timestamp")
                     continue
-                
+
                 try:
                     # Try the exact timestamp first
                     timestamps_to_try = [
@@ -606,65 +686,71 @@ class VideoAnalyzer:
                         max(0, timestamp_ms - 100),  # 100ms before
                         timestamp_ms + 100,  # 100ms after
                     ]
-                    
+
                     pose_vectors = []
                     for ts in timestamps_to_try:
                         cap.set(cv2.CAP_PROP_POS_MSEC, ts)
                         success, frame = cap.read()
-                        
+
                         if not success or frame is None:
                             continue
-                        
+
                         # Run pose detection
-                        results = model(frame, verbose=False, conf=0.15)  # Lower confidence
-                        
+                        results = model(frame, verbose=False,
+                                        conf=0.15)  # Lower confidence
+
                         if not results or len(results) == 0:
                             continue
-                        
+
                         result = results[0]
                         keypoints = result.keypoints
-                        
+
                         if keypoints is None or keypoints.xy is None:
                             continue
-                        
+
                         xy = keypoints.xy.cpu().numpy().tolist()
                         conf = keypoints.conf
                         conf = conf.cpu().numpy().tolist() if conf is not None else None
-                        
+
                         # Convert to app vector format
-                        pose_vectors = keypoints_to_vectors(xy, conf, width, height, min_conf=0.15)
-                        
+                        pose_vectors = keypoints_to_vectors(
+                            xy, conf, width, height, min_conf=0.15)
+
                         if pose_vectors:
-                            print(f"[Pose] ✓ Found {len(pose_vectors)} skeleton vectors at {ts}ms for feedback {fp_idx}")
-                            
+                            print(
+                                f"[Pose] ✓ Found {len(pose_vectors)} skeleton vectors at {ts}ms for feedback {fp_idx}")
+
                             # Snap any existing correction vectors to detected skeleton for better alignment
                             if visuals.get("vectors"):
-                                print(f"[Pose] Snapping {len(visuals['vectors'])} correction vectors to skeleton...")
+                                print(
+                                    f"[Pose] Snapping {len(visuals['vectors'])} correction vectors to skeleton...")
                                 visuals = snap_correction_vectors_to_skeleton(
                                     visuals, xy, conf, width, height, coaching_script
                                 )
-                            
+
                             # Merge skeleton with (now-snapped) correction vectors
-                            existing_vectors = visuals.get("vectors", [])
+                            existing_vectors = visuals.get("vectors") or []
                             combined_vectors = pose_vectors + existing_vectors
                             visuals["vectors"] = combined_vectors
-                            
-                            print(f"[Pose] Combined {len(pose_vectors)} skeleton + {len(existing_vectors)} correction vectors")
+
+                            print(
+                                f"[Pose] Combined {len(pose_vectors)} skeleton + {len(existing_vectors)} correction vectors")
                             break
                         else:
                             print(f"[Pose] No valid keypoints at {ts}ms")
-                    
+
                     if not pose_vectors:
-                        print(f"[Pose] ✗ No pose detected for feedback {fp_idx} at {timestamp_ms}ms")
+                        print(
+                            f"[Pose] ✗ No pose detected for feedback {fp_idx} at {timestamp_ms}ms")
                         continue
-                    
+
                 except Exception as e:
                     print(f"[Pose] ERROR at {timestamp_ms}ms: {e}")
                     import traceback
                     traceback.print_exc()
-            
+
             cap.release()
-        
+
         return feedback_points
 
 
@@ -698,14 +784,17 @@ async def analyze(request: Request):
     # Sample frames at 1s, 2s, 3s, 4s, 5s
     sample_timestamps = [1000, 2000, 3000, 4000, 5000]
     try:
-        print(f"[Endpoint] Extracting pose data at timestamps: {sample_timestamps}...")
+        print(
+            f"[Endpoint] Extracting pose data at timestamps: {sample_timestamps}...")
         pose_data = await VideoAnalyzer().extract_pose_data.remote.aio(
             video_bytes=video_bytes,
             timestamps_ms=sample_timestamps
         )
-        print(f"[Endpoint] ✓ Pose data extracted: {len(pose_data.get('detected_poses', {}))} frames")
+        print(
+            f"[Endpoint] ✓ Pose data extracted: {len(pose_data.get('detected_poses', {}))} frames")
     except Exception as e:
-        print(f"[Endpoint] ⚠ Pose extraction failed, continuing without pose context: {e}")
+        print(
+            f"[Endpoint] ⚠ Pose extraction failed, continuing without pose context: {e}")
         pose_data = None
 
     # 3. Call the VL model with pose context
@@ -753,7 +842,8 @@ async def analyze(request: Request):
     # 5. Add pose skeleton overlays to each feedback timestamp
     # Run pose detection in VideoAnalyzer where opencv is available
     try:
-        print(f"[Endpoint] Adding pose skeleton overlays to {len(feedback_points)} feedback points...")
+        print(
+            f"[Endpoint] Adding pose skeleton overlays to {len(feedback_points)} feedback points...")
         feedback_points = await VideoAnalyzer().add_pose_overlays.remote.aio(
             video_bytes=video_bytes,
             feedback_points=feedback_points
