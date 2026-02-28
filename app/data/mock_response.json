@@ -1,114 +1,33 @@
 {
   "status": "success",
-  "analysis": {
-    "mistake_timestamp_ms": 1450,
-    "coaching_script": "Great effort. You have three key fixes: raise your right elbow during follow-through, keep your front knee more stable, and rotate your shoulders earlier through contact.",
-    "positive_note": "Great balance and commitment through the swing.",
-    "progress_score": 78,
-    "improvement_delta": 3,
-    "technical_stats": {
-      "elbow_observed_angle": 92,
-      "elbow_target_angle": 125,
-      "knee_observed_angle": 158,
-      "knee_target_angle": 145,
-      "shoulder_observed_rotation": 18,
-      "shoulder_target_rotation": 32
-    }
-  },
-  "visuals": {
-    "focus_point": {
-      "x": 0.50,
-      "y": 0.39
+  "positive_note": "Your stance looks very solid.",
+  "progress_score": 85,
+  "feedback_points": [
+    {
+      "mistake_timestamp_ms": 1000,
+      "coaching_script": "You dropped your elbow a bit early here.",
+      "visuals": {
+        "focus_point": {
+          "x": 0.4,
+          "y": 0.4
+        },
+        "overlay_type": "POSITION_MARKER",
+        "vectors": []
+      },
+      "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
     },
-    "overlay_type": "ANGLE_CORRECTION",
-    "vectors": [
-      {
-        "start": [0.50, 0.39],
-        "end": [0.59, 0.46],
-        "color": "red",
-        "label": "Elbow Current"
+    {
+      "mistake_timestamp_ms": 2500,
+      "coaching_script": "And your follow through didn't fully extend on this frame. Try to snap your wrist more.",
+      "visuals": {
+        "focus_point": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "overlay_type": "ANGLE_CORRECTION",
+        "vectors": []
       },
-      {
-        "start": [0.50, 0.39],
-        "end": [0.68, 0.36],
-        "color": "green",
-        "label": "Elbow Target"
-      },
-      {
-        "start": [0.50, 0.56],
-        "end": [0.57, 0.72],
-        "color": "#ff4d4d",
-        "label": "Knee Current"
-      },
-      {
-        "start": [0.50, 0.56],
-        "end": [0.54, 0.70],
-        "color": "#66ff66",
-        "label": "Knee Target"
-      },
-      {
-        "start": [0.50, 0.39],
-        "end": [0.41, 0.48],
-        "color": "#ff884d",
-        "label": "Shoulder Current"
-      },
-      {
-        "start": [0.50, 0.39],
-        "end": [0.38, 0.42],
-        "color": "#88ffcc",
-        "label": "Shoulder Target"
-      },
-      {
-        "start": [0.50, 0.24],
-        "end": [0.50, 0.36],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.50, 0.36],
-        "end": [0.50, 0.56],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.50, 0.39],
-        "end": [0.41, 0.48],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.41, 0.48],
-        "end": [0.36, 0.58],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.50, 0.39],
-        "end": [0.59, 0.46],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.59, 0.46],
-        "end": [0.64, 0.56],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.50, 0.56],
-        "end": [0.44, 0.73],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.44, 0.73],
-        "end": [0.43, 0.89],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.50, 0.56],
-        "end": [0.57, 0.72],
-        "color": "#ffffff"
-      },
-      {
-        "start": [0.57, 0.72],
-        "end": [0.58, 0.88],
-        "color": "#ffffff"
-      }
-    ]
-  },
-  "audio_url": "https://example.com/mock-audio.mp3"
+      "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+    }
+  ]
 }

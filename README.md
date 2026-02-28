@@ -89,20 +89,19 @@ Record (5s max) → Describe intent → AI analyzes → Video pauses at mistake 
 |-------|------|-------|
 | `status` | Enum | `success`, `low_confidence`, `error` |
 | `error_message` | String or null | Only if status is `error` |
-| `analysis` | Object | See below |
-| `visuals` | Object | See below |
-| `audio_url` | URL string | ElevenLabs MP3 |
+| `feedback_points` | Array | See below |
+| `positive_note` | String | What user did well |
+| `progress_score` | Integer (0–100) | Current attempt rating |
+| `improvement_delta` | Integer | Change from last session |
 
-**Analysis Object:**
+**Feedback Point Object:**
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `mistake_timestamp_ms` | Integer | Milliseconds into video |
 | `coaching_script` | String | Spoken feedback text |
-| `positive_note` | String | What user did well |
-| `progress_score` | Integer (0–100) | Current attempt rating |
-| `improvement_delta` | Integer | Change from last session |
-| `technical_stats` | Object | `observed_angle`, `target_angle` (optional) |
+| `visuals` | Object | See below |
+| `audio_url` | URL string | ElevenLabs MP3 |
 
 **Visuals Object:**
 

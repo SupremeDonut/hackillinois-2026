@@ -1,85 +1,172 @@
-/**
- * ==============================================================================
- * 🎥 [DEV 1/DEV 2] CAMERA AND UPLOAD SCREEN (app/screens/RecordingScreen.tsx)
- * ==============================================================================
- * Purpose:
- *   Handles the `expo-camera` capturing logic. The user has 5 seconds maximum
- *   to record their physical action (e.g., throwing a baseball).
- *
- * Responsibilities:
- *   1. Ask for camera/mic permissions.
- *   2. Render the <CameraView> properly mapped to the screen.
- *   3. Enforce the 5-second countdown timer to keep the app snappy.
- *   4. Feed the resulting file URI to `services/api.ts` to push to Modal.
- *
- * The Aspect Ratio Trap (CRITICAL):
- *   - Most camera sensors do not match a phone screen. E.g., a phone screen
- *     is 19.5:9, but the camera captures natively at 4:3 or 16:9.
- *   - If you let React Native dynamically stretch (`resizeMode="cover"`) the 
- *     video, the X/Y coordinate math that Dev 3 is building will BREAK.
- *   - Dev 1 MUST lock the camera's aspect ratio (e.g., explicitly 16:9) 
- *     so the captured video's bounding-box is exactly known.
- * ==============================================================================
- */
-import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet } from 'react-native';
-// import { CameraView } from 'expo-camera';
-import { uploadVideo } from '../services/api';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList, ActivityType } from '../types';
+import { globalStyles, Colors } from '../styles/theme';
 
-export default function RecordingScreen({ navigation }: any) {
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Recording'>;
+
+export default function RecordingScreen() {
+    const navigation = useNavigation<NavigationProp>();
+
+    const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+    const [micPermission, requestMicPermission] = useMicrophonePermissions();
+
+    const cameraRef = useRef<CameraView>(null);
+    const [isReady, setIsReady] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
 
-    // Starts the camera and caps the session at 5 seconds
+    const [activityType, setActivityType] = useState<ActivityType>('basketball_shot');
+    const [description, setDescription] = useState('My default description for Stage 2');
+    const [countdown, setCountdown] = useState(5);
+
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        if (isRecording && countdown > 0) {
+            timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+        } else if (isRecording && countdown === 0) {
+            stopRecording();
+        }
+        return () => clearTimeout(timer);
+    }, [isRecording, countdown]);
+
+    if (!cameraPermission || !micPermission) {
+        return <View />; // Loading permissions
+    }
+
+    if (!cameraPermission.granted || !micPermission.granted) {
+        return (
+            <View style={globalStyles.centerContent}>
+                <Text style={globalStyles.heading}>Permissions Required</Text>
+                <Text style={globalStyles.subHeading}>We need camera and microphone to analyze your form.</Text>
+                <TouchableOpacity style={globalStyles.primaryButton} onPress={() => {
+                    requestCameraPermission();
+                    requestMicPermission();
+                }}>
+                    <Text style={globalStyles.buttonText}>Grant Permissions</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
     const startRecording = async () => {
-        // Implement 5-second max recording logic here
-        console.log("Started recording...");
+        if (!cameraRef.current || !isReady) return;
+
+        setIsRecording(true);
+        setCountdown(5);
+
+        try {
+            const video = await cameraRef.current.recordAsync({ maxDuration: 5 });
+
+            console.log('Video saved locally to:', video?.uri);
+
+            if (video?.uri) {
+                navigation.replace('Analyzing', {
+                    videoUri: video.uri,
+                    activityType,
+                    description,
+                });
+            }
+        } catch (error) {
+            console.error("Recording failed:", error);
+        } finally {
+            setIsRecording(false);
+        }
     };
 
-    // Callback when recording completes. Takes the raw file string.
-    const handleUpload = async (fileUri: string) => {
-        // 1. Gather context
-        const metadata = {
-            activity_type: 'tennis_serve',
-            user_description: 'fix my serve'
-        };
-
-        // 2. Upload file via the 'multipart/form-data' API handler
-        // const result = await uploadVideo(fileUri, metadata);
-
-        // 3. Move the user to the Playback engine and pass the Modal response
-        // navigation.navigate('Playback', { analysis: result });
+    const stopRecording = () => {
+        if (cameraRef.current && isRecording) {
+            cameraRef.current.stopRecording();
+            setIsRecording(false);
+        }
     };
 
     return (
-        <View style={styles.container}>
-            {/* Dev 1: Insert CameraView here locked to 16:9 */}
-            <Text style={styles.text}>Recording Screen</Text>
-            <Text style={styles.subtext}>(CameraView goes here)</Text>
+        <View style={globalStyles.fullScreen}>
 
-            <Button title="Record (5s)" onPress={startRecording} />
-            {/* Dev 3: Test SVGOverlay without uploading — navigates to Playback with mock visuals. */}
-            <Button
-                title="Test overlay (mock data)"
-                onPress={() => navigation.navigate('Playback', {})}
-            />
+            {/* 16:9 Aspect Ratio Camera Container */}
+            <View style={S.cameraContainer}>
+                <CameraView
+                    ref={cameraRef}
+                    style={S.camera}
+                    facing="back"
+                    mode="video"
+                    onCameraReady={() => setIsReady(true)}
+                />
+
+                {/* Overlay positioned absolutely over the CameraView */}
+                {isRecording && (
+                    <View style={S.recordingOverlay} pointerEvents="none">
+                        <Text style={S.countdownText}>{countdown}s</Text>
+                        <Text style={S.warningText}>Keep the phone absolutely still!</Text>
+                    </View>
+                )}
+            </View>
+
+            {/* Controls Container */}
+            <View style={S.controlsContainer}>
+                <Text style={globalStyles.subHeading}>Activity: {activityType}</Text>
+
+                <TouchableOpacity
+                    style={[globalStyles.primaryButton, isRecording && S.stopButton]}
+                    onPress={isRecording ? stopRecording : startRecording}
+                    disabled={!isReady}
+                >
+                    <Text style={globalStyles.buttonText}>
+                        {!isReady ? 'Loading Camera...' : (isRecording ? 'Stop' : 'Start Recording')}
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
         </View>
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
+const S = StyleSheet.create({
+    cameraContainer: {
+        width: '100%',
+        aspectRatio: 9 / 16,
+        backgroundColor: '#000',
+        overflow: 'hidden',
+    },
+    camera: {
         flex: 1,
+    },
+    recordingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(255,0,0,0.1)',
+        borderWidth: 4,
+        borderColor: Colors.error,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#000',
     },
-    text: {
-        color: '#fff',
-        fontSize: 20,
-        marginBottom: 10
+    countdownText: {
+        fontSize: 72,
+        fontWeight: 'bold',
+        color: Colors.text,
+        textShadowColor: 'rgba(0, 0, 0, 0.75)',
+        textShadowOffset: { width: -1, height: 1 },
+        textShadowRadius: 10
     },
-    subtext: {
-        color: '#aaa',
-        marginBottom: 20
+    warningText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: Colors.error,
+        marginTop: 20,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
+    },
+    controlsContainer: {
+        flex: 1,
+        padding: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    stopButton: {
+        backgroundColor: Colors.error,
     }
 });
