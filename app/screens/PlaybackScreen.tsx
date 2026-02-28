@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Video, ResizeMode, AVPlaybackStatus, Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
@@ -66,8 +67,25 @@ export default function PlaybackScreen() {
                         await soundRef.current.unloadAsync();
                     }
 
+                    // Support both base64-encoded audio from the backend
+                    // AND plain URLs used in mock data
+                    let audioSource: { uri: string };
+                    if (currentFeedback.audio_url.startsWith('data:audio')) {
+                        // Backend sends base64 — write raw bytes to a temp file
+                        // using the legacy FileSystem API (EncodingType.Base64 = correct binary write)
+                        const base64Data = currentFeedback.audio_url.split(',')[1];
+                        const tempPath = `${FileSystem.cacheDirectory}ai_voice_${Date.now()}.wav`;
+                        await FileSystem.writeAsStringAsync(tempPath, base64Data, {
+                            encoding: FileSystem.EncodingType.Base64,
+                        });
+                        audioSource = { uri: tempPath };
+                    } else {
+                        // Mock data URL — load directly
+                        audioSource = { uri: currentFeedback.audio_url };
+                    }
+
                     const { sound } = await Audio.Sound.createAsync(
-                        { uri: currentFeedback.audio_url },
+                        audioSource,
                         { shouldPlay: true }
                     );
 
