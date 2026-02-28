@@ -61,7 +61,7 @@ async def analyze_endpoint(
     }
 
 
-@app.function(image=image)
+@app.function(image=image, secrets=[modal.Secret.from_name("custom-secret")])
 @modal.asgi_app()
 def fastapi_app():
     return web_app

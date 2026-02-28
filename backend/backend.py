@@ -1,8 +1,5 @@
 import modal
 from pydantic import BaseModel
-
-# import io
-# import base64
 import tempfile
 
 video_image = (
@@ -24,43 +21,8 @@ video_image = (
         "outlines",
     )
 )
-# tts_image = (
-#     modal.Image.debian_slim(python_version="3.11")
-#     .apt_install("curl")
-#     .pip_install("kokoro-onnx", "soundfile", "onnxruntime-gpu", "pydantic")
-#     # Pre-download weights so they are baked into the image
-#     .run_commands(
-#         "curl -L https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx -o /root/kokoro-v1.0.onnx",
-#         "curl -L https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin -o /root/voices-v1.0.bin",
-#     )
-# )
 
 app = modal.App("biomechanics-ai")
-
-
-# @app.cls(image=tts_image, gpu="T4", timeout=600)
-# class TextToSpeech:
-#     @modal.enter()
-#     def setup(self):
-#         from kokoro_onnx import Kokoro
-#         # from misaki import en
-#
-#         # Load once and keep in memory
-#         self.model = Kokoro("/root/kokoro-v1.0.onnx", "/root/voices-v1.0.bin")
-#         # self.g2p = en.G2P(trf=False, british=False)
-#
-#     @modal.method()
-#     def speak(self, text: str) -> str:
-#         import soundfile as sf
-#         # import numpy as np
-#
-#         samples, sample_rate = self.model.create(
-#             text, "af_heart", speed=1.0, is_phonemes=False
-#         )
-#
-#         wav_io = io.BytesIO()
-#         sf.write(wav_io, samples, sample_rate, format="WAV")
-#         return base64.b64encode(wav_io.getvalue()).decode("utf-8")
 
 
 # TODO: fix schema
