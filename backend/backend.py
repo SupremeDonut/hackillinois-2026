@@ -509,25 +509,26 @@ This is the user's first attempt at this movement. There is no previous session 
                         for kp_name, coords in keypoints_data['keypoints'].items():
                             prompt += f"  {kp_name}: [{coords[0]:.3f}, {coords[1]:.3f}]\n"
                 prompt += """\nRULES FOR VISUAL OVERLAYS:
-- Your correction vectors MUST use these detected keypoint coordinates as start/end points
-- Match the body part in your coaching_script to the corresponding keypoint name
-- For "Current" vectors: start at the joint, end at its actual neighbor in the skeleton
-- For "Target" vectors: start at the same joint, end at the corrected position
+- The full body skeleton is drawn AUTOMATICALLY by the backend — do NOT include skeleton vectors in your output
+- You ONLY output correction vectors showing what needs to change
+- Always specify LEFT or RIGHT in your coaching_script (e.g. "left elbow" not just "elbow")
+- For "Current" vectors: use the detected keypoint as the start, and the current wrong neighbor as the end
+- For "Target" vectors: use the same start keypoint, and show where it SHOULD go
 """
 
             prompt += """\n=== OUTPUT RULES ===
-1. Return between 1 and 5 feedback_points, ordered by importance (most impactful correction first)
-2. Each coaching_script should be 1-2 sentences, spoken aloud by a voice coach
+1. Return between 1 and 5 feedback_points, ordered by importance
+2. Each coaching_script should be 1-2 sentences. ALWAYS specify LEFT or RIGHT when referring to a body part
 3. The positive_note should genuinely highlight something the user did well
 4. progress_score is 0-100 rating of overall form quality
 5. All visual coordinates MUST be floats between 0.0 and 1.0
 6. For ANGLE_CORRECTION visuals: include exactly 2 vectors:
-   - One labeled "Current" with color "red" showing the WRONG position
-   - One labeled "Target" with color "green" showing the CORRECT position
-   - Both vectors must start from the same joint
-7. For POSITION_MARKER visuals: set focus_point to the relevant body part coordinate
-8. Output ONLY valid JSON — no markdown fences, no extra text before or after
-9. The skeleton overlay will be rendered with: gray = neutral body parts, red = critiqued body parts, green = target correction. Your vectors will be color-coded automatically.
+   - One labeled "Current" with color "red" — the current wrong limb position
+   - One labeled "Target" with color "green" — the corrected limb position
+   - Both must start from the SAME joint keypoint
+7. For POSITION_MARKER visuals: set focus_point to the relevant body part coordinate, no vectors needed
+8. Output ONLY valid JSON — no markdown fences, no extra text
+9. Do NOT draw the full skeleton — the backend does that. Only draw correction arrows.
 """
 
             prompt += """
@@ -542,7 +543,7 @@ Your response must be a single JSON object with EXACTLY this structure (fill in 
   "feedback_points": [
     {
       "mistake_timestamp_ms": 2000,
-      "coaching_script": "At 2 seconds, try raising your elbow higher during the backswing for more power.",
+      "coaching_script": "At 2 seconds, try raising your LEFT elbow higher during the backswing for more power.",
       "visuals": {
         "overlay_type": "ANGLE_CORRECTION",
         "focus_point": {"x": 0.45, "y": 0.55},
@@ -556,7 +557,8 @@ Your response must be a single JSON object with EXACTLY this structure (fill in 
   ]
 }
 
-IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback as a JSON object."""
+IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback as a JSON object.
+"""
 
             print(f"\n[Analyze] 📝 Prompt constructed ({len(prompt):,} chars)")
             print(f"[Analyze] --- PROMPT START ---")
@@ -868,27 +870,54 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
                                 )
 
                             # Recolor skeleton segments that touch critiqued body parts
-                            # Parse coaching_script for body part keywords
+                            # Side-aware: "left elbow" only highlights left arm, not both
                             critiqued_kp_indices = set()
                             script_lower = coaching_script.lower()
+
+                            # Detect side preference from coaching script
+                            has_left = "left" in script_lower
+                            has_right = "right" in script_lower
+
+                            # Side-aware body part keyword mapping (COCO 0-indexed)
+                            # Each entry: keyword -> {"left": [...], "right": [...], "both": [...]}
                             BODY_PART_KW = {
-                                "back": [5, 6, 11, 12], "spine": [5, 6, 11, 12],
-                                "shoulder": [5, 6], "elbow": [7, 8],
-                                "arm": [5, 6, 7, 8, 9, 10], "wrist": [9, 10], "hand": [9, 10],
-                                "hip": [11, 12], "knee": [13, 14],
-                                "leg": [11, 12, 13, 14, 15, 16], "ankle": [15, 16], "foot": [15, 16],
-                                "head": [0, 3, 4], "neck": [0, 5, 6],
+                                "shoulder": {"left": [5], "right": [6], "both": [5, 6]},
+                                "elbow":    {"left": [7], "right": [8], "both": [7, 8]},
+                                "arm":      {"left": [5, 7, 9], "right": [6, 8, 10], "both": [5, 6, 7, 8, 9, 10]},
+                                "wrist":    {"left": [9], "right": [10], "both": [9, 10]},
+                                "hand":     {"left": [9], "right": [10], "both": [9, 10]},
+                                "hip":      {"left": [11], "right": [12], "both": [11, 12]},
+                                "knee":     {"left": [13], "right": [14], "both": [13, 14]},
+                                "leg":      {"left": [11, 13, 15], "right": [12, 14, 16], "both": [11, 12, 13, 14, 15, 16]},
+                                "ankle":    {"left": [15], "right": [16], "both": [15, 16]},
+                                "foot":     {"left": [15], "right": [16], "both": [15, 16]},
+                                "back":     {"left": [5, 6, 11, 12], "right": [5, 6, 11, 12], "both": [5, 6, 11, 12]},
+                                "spine":    {"left": [5, 6, 11, 12], "right": [5, 6, 11, 12], "both": [5, 6, 11, 12]},
+                                "head":     {"left": [0, 3, 4], "right": [0, 3, 4], "both": [0, 3, 4]},
+                                "neck":     {"left": [0, 5, 6], "right": [0, 5, 6], "both": [0, 5, 6]},
                             }
-                            for kw, indices in BODY_PART_KW.items():
+                            for kw, sides in BODY_PART_KW.items():
                                 if kw in script_lower:
-                                    critiqued_kp_indices.update(indices)
+                                    # Pick the right side based on what the script mentions
+                                    if has_left and not has_right:
+                                        critiqued_kp_indices.update(
+                                            sides["left"])
+                                    elif has_right and not has_left:
+                                        critiqued_kp_indices.update(
+                                            sides["right"])
+                                    else:
+                                        critiqued_kp_indices.update(
+                                            sides["both"])
 
                             if critiqued_kp_indices:
+                                print(
+                                    f"[Pose] 🎯 Critiqued keypoint indices: {sorted(critiqued_kp_indices)}")
                                 # Build a set of (kp_a, kp_b) pairs that should be red
+                                # BOTH endpoints must be in the critiqued set to avoid color bleed
                                 critiqued_segments = set()
                                 for a, b in COCO_SKELETON:
                                     i_a, i_b = a - 1, b - 1  # 0-indexed
-                                    if i_a in critiqued_kp_indices or i_b in critiqued_kp_indices:
+                                    if i_a in critiqued_kp_indices and i_b in critiqued_kp_indices:
                                         critiqued_segments.add((i_a, i_b))
 
                                 # Recolor matching gray skeleton vectors to red (#FF3B30)
@@ -897,7 +926,6 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
                                 for vec in pose_vectors:
                                     if vec.get("color") != "#888888":
                                         continue
-                                    # Match this vector to a skeleton segment by coordinate proximity
                                     vs = vec["start"]
                                     ve = vec["end"]
                                     for i_a, i_b in critiqued_segments:
@@ -907,15 +935,13 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
                                             person[i_a][0] / width), float(person[i_a][1] / height)
                                         ex, ey = float(
                                             person[i_b][0] / width), float(person[i_b][1] / height)
-                                        # Check if vector matches this segment (within tolerance)
                                         if (abs(vs[0]-sx) < 0.01 and abs(vs[1]-sy) < 0.01 and
                                                 abs(ve[0]-ex) < 0.01 and abs(ve[1]-ey) < 0.01):
-                                            # Red for critiqued
                                             vec["color"] = "#FF3B30"
                                             recolored += 1
                                             break
                                 print(
-                                    f"[Pose] 🎨 Recolored {recolored} skeleton segments to red for critiqued body parts")
+                                    f"[Pose] 🎨 Recolored {recolored}/{len(critiqued_segments)} critiqued skeleton segments to red")
 
                             # Merge skeleton with (now-snapped) correction vectors
                             existing_vectors = visuals.get("vectors") or []
