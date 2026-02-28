@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal, Tuple, Any
+from typing import List, Optional, Tuple, Any
 
 # Modal runs the entire script in every container.
 # FastAPI is only installed in the web endpoint container.
@@ -9,7 +9,6 @@ except ImportError:
     Request = Any
     Response = Any
 import modal
-from pydantic import BaseModel
 import tempfile
 
 MODEL_ID = "Qwen/Qwen3-VL-32B-Instruct"
@@ -255,14 +254,12 @@ def snap_correction_vectors_to_skeleton(
         for kp_name in target_keypoints:
             if kp_name in KEYPOINTS:
                 kp_idx = KEYPOINTS[kp_name]
-                kp_coords = get_keypoint_coords(
-                    xy, conf, kp_idx, width, height)
+                kp_coords = get_keypoint_coords(xy, conf, kp_idx, width, height)
 
                 if kp_coords:
                     # Prioritize keypoints that match the coaching context
                     dist = (
-                        (start[0] - kp_coords[0]) ** 2 +
-                        (start[1] - kp_coords[1]) ** 2
+                        (start[0] - kp_coords[0]) ** 2 + (start[1] - kp_coords[1]) ** 2
                     ) ** 0.5
                     if dist < min_dist:
                         min_dist = dist
@@ -278,8 +275,7 @@ def snap_correction_vectors_to_skeleton(
             for adj_name in KEYPOINT_CONNECTIONS[best_kp_name]:
                 if adj_name in KEYPOINTS:
                     adj_idx = KEYPOINTS[adj_name]
-                    adj_coords = get_keypoint_coords(
-                        xy, conf, adj_idx, width, height)
+                    adj_coords = get_keypoint_coords(xy, conf, adj_idx, width, height)
                     if adj_coords:
                         adjacent_coords = adj_coords
                         adjacent_name = adj_name
@@ -318,10 +314,8 @@ def snap_correction_vectors_to_skeleton(
                     angle = math.radians(30)
                     cos_a = math.cos(angle)
                     sin_a = math.sin(angle)
-                    target_x = best_kp_coords[0] + \
-                        (curr_dx * cos_a - curr_dy * sin_a)
-                    target_y = best_kp_coords[1] + \
-                        (curr_dx * sin_a + curr_dy * cos_a)
+                    target_x = best_kp_coords[0] + (curr_dx * cos_a - curr_dy * sin_a)
+                    target_y = best_kp_coords[1] + (curr_dx * sin_a + curr_dy * cos_a)
 
                 snapped_vectors.append(
                     {
@@ -380,8 +374,6 @@ video_image = (
         "git+https://github.com/huggingface/transformers.git",
         "accelerate",
         "qwen-vl-utils",
-        "outlines",
-        "pydantic",
         "decord",
         "torchvision",
         "huggingface_hub",
@@ -396,48 +388,6 @@ video_image = (
 )
 
 app = modal.App("biomechanics-ai")
-
-
-class Point(BaseModel):
-    x: float
-    y: float
-
-
-class Vector(BaseModel):
-    start: Tuple[float, float]
-    end: Tuple[float, float]
-    color: str
-    label: Optional[str] = None
-
-
-class VisualOverlay(BaseModel):
-    overlay_type: Literal["POSITION_MARKER", "ANGLE_CORRECTION", "PATH_TRACE"]
-    focus_point: Optional[Point] = None
-    vectors: Optional[List[Vector]] = None
-    path_points: Optional[List[Tuple[float, float]]] = None
-
-
-class FeedbackPointLLM(BaseModel):
-    mistake_timestamp_ms: int
-    coaching_script: str
-    visuals: Optional[VisualOverlay] = None
-
-
-class FeedbackPointResponse(FeedbackPointLLM):
-    audio_url: str
-
-
-class BiomechanicalAnalysisLLM(BaseModel):
-    status: Literal["success", "low_confidence", "error"]
-    error_message: Optional[str] = None
-    positive_note: str
-    progress_score: int
-    improvement_delta: Optional[int] = None
-    feedback_points: List[FeedbackPointLLM]
-
-
-class BiomechanicalAnalysisResponse(BiomechanicalAnalysisLLM):
-    feedback_points: List[FeedbackPointResponse]
 
 
 @app.cls(
@@ -467,7 +417,6 @@ class VideoAnalyzer:
         previous_analysis: str = "",
         pose_data: Optional[dict] = None,
     ):
-        import json
         import time as _time
 
         print(f"\n{'='*60}")
@@ -668,8 +617,7 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
             import torch
 
             mm_types = inputs["mm_token_type_ids"][0].tolist()
-            type_groups = [(k, len(list(g)))
-                           for k, g in itertools.groupby(mm_types)]
+            type_groups = [(k, len(list(g))) for k, g in itertools.groupby(mm_types)]
             video_groups = [(k, l) for k, l in type_groups if k == 2]
             n_video_groups = len(video_groups)
             n_grid_entries = inputs["video_grid_thw"].shape[0]
@@ -693,11 +641,10 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
             # Native Hugging Face generation
             t_gen_start = _time.time()
             print(f"[Analyze] 🚀 Starting model.generate (max_new_tokens=4096)...")
-            generated_ids = self.raw_model.generate(
-                **inputs, max_new_tokens=4096)
+            generated_ids = self.raw_model.generate(**inputs, max_new_tokens=4096)
             t_gen_end = _time.time()
             generated_ids_trimmed = [
-                out_ids[len(in_ids):]
+                out_ids[len(in_ids) :]
                 for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
             ]
             output_text = self.processor.batch_decode(
@@ -706,10 +653,8 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
                 clean_up_tokenization_spaces=False,
             )[0]
 
-            print(
-                f"[Analyze] ✅ Generation complete in {t_gen_end - t_gen_start:.1f}s")
-            print(
-                f"[Analyze] --- RAW MODEL OUTPUT ({len(output_text)} chars) ---")
+            print(f"[Analyze] ✅ Generation complete in {t_gen_end - t_gen_start:.1f}s")
+            print(f"[Analyze] --- RAW MODEL OUTPUT ({len(output_text)} chars) ---")
             print(output_text[:3000])
             if len(output_text) > 3000:
                 print(f"  ... ({len(output_text) - 3000} more chars) ...")
@@ -718,10 +663,8 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
             # Clean markdown code blocks if the LLM added them
             import re
 
-            json_match = re.search(
-                r"```json\n*(.*?)\n*```", output_text, re.DOTALL)
-            clean_json_str = json_match.group(
-                1) if json_match else output_text.strip()
+            json_match = re.search(r"```json\n*(.*?)\n*```", output_text, re.DOTALL)
+            clean_json_str = json_match.group(1) if json_match else output_text.strip()
 
             # Validate and dump
             result = BiomechanicalAnalysisLLM.model_validate_json(
@@ -741,8 +684,7 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
             print(f"  progress_score: {result.get('progress_score')}")
             print(f"  improvement_delta: {result.get('improvement_delta')}")
             print(f"  positive_note: {result.get('positive_note', '')[:100]}")
-            print(
-                f"  feedback_points: {len(result.get('feedback_points', []))}")
+            print(f"  feedback_points: {len(result.get('feedback_points', []))}")
             for i, fp in enumerate(result.get("feedback_points", [])):
                 print(
                     f"    [{i}] @{fp.get('mistake_timestamp_ms')}ms: {fp.get('coaching_script', '')[:80]}..."
@@ -760,8 +702,7 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
         import cv2
         from ultralytics import YOLO
 
-        print(
-            f"[Pose] Extracting pose data at {len(timestamps_ms)} timestamps...")
+        print(f"[Pose] Extracting pose data at {len(timestamps_ms)} timestamps...")
         model = YOLO("yolo26x-pose.pt")
 
         # COCO keypoint names for clarity
@@ -851,7 +792,6 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
     ) -> List[dict]:
         """Extract pose skeleton for each feedback timestamp and merge with visuals."""
         import cv2
-        import numpy as np
         from ultralytics import YOLO
 
         print(f"[Pose] Loading YOLO model...")
@@ -882,8 +822,7 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
 
                 # If no visuals exist, create a basic structure for the skeleton
                 if not visuals:
-                    print(
-                        f"[Pose] Creating empty visuals for feedback point {fp_idx}")
+                    print(f"[Pose] Creating empty visuals for feedback point {fp_idx}")
                     visuals = {
                         "overlay_type": "POSITION_MARKER",
                         "focus_point": None,
@@ -892,8 +831,7 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
                     fp["visuals"] = visuals
 
                 if not timestamp_ms:
-                    print(
-                        f"[Pose] Skipping feedback point {fp_idx}: no timestamp")
+                    print(f"[Pose] Skipping feedback point {fp_idx}: no timestamp")
                     continue
 
                 try:
@@ -962,42 +900,71 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
                             # Each entry: keyword -> {"left": [...], "right": [...], "both": [...]}
                             BODY_PART_KW = {
                                 "shoulder": {"left": [5], "right": [6], "both": [5, 6]},
-                                "elbow":    {"left": [7], "right": [8], "both": [7, 8]},
-                                "arm":      {"left": [5, 7, 9], "right": [6, 8, 10], "both": [5, 6, 7, 8, 9, 10]},
-                                "wrist":    {"left": [9], "right": [10], "both": [9, 10]},
-                                "hand":     {"left": [9], "right": [10], "both": [9, 10]},
-                                "hip":      {"left": [11], "right": [12], "both": [11, 12]},
-                                "knee":     {"left": [13], "right": [14], "both": [13, 14]},
-                                "leg":      {"left": [11, 13, 15], "right": [12, 14, 16], "both": [11, 12, 13, 14, 15, 16]},
-                                "ankle":    {"left": [15], "right": [16], "both": [15, 16]},
-                                "foot":     {"left": [15], "right": [16], "both": [15, 16]},
-                                "back":     {"left": [5, 6, 11, 12], "right": [5, 6, 11, 12], "both": [5, 6, 11, 12]},
-                                "spine":    {"left": [5, 6, 11, 12], "right": [5, 6, 11, 12], "both": [5, 6, 11, 12]},
-                                "head":     {"left": [0, 3, 4], "right": [0, 3, 4], "both": [0, 3, 4]},
-                                "neck":     {"left": [0, 5, 6], "right": [0, 5, 6], "both": [0, 5, 6]},
+                                "elbow": {"left": [7], "right": [8], "both": [7, 8]},
+                                "arm": {
+                                    "left": [5, 7, 9],
+                                    "right": [6, 8, 10],
+                                    "both": [5, 6, 7, 8, 9, 10],
+                                },
+                                "wrist": {"left": [9], "right": [10], "both": [9, 10]},
+                                "hand": {"left": [9], "right": [10], "both": [9, 10]},
+                                "hip": {"left": [11], "right": [12], "both": [11, 12]},
+                                "knee": {"left": [13], "right": [14], "both": [13, 14]},
+                                "leg": {
+                                    "left": [11, 13, 15],
+                                    "right": [12, 14, 16],
+                                    "both": [11, 12, 13, 14, 15, 16],
+                                },
+                                "ankle": {
+                                    "left": [15],
+                                    "right": [16],
+                                    "both": [15, 16],
+                                },
+                                "foot": {"left": [15], "right": [16], "both": [15, 16]},
+                                "back": {
+                                    "left": [5, 6, 11, 12],
+                                    "right": [5, 6, 11, 12],
+                                    "both": [5, 6, 11, 12],
+                                },
+                                "spine": {
+                                    "left": [5, 6, 11, 12],
+                                    "right": [5, 6, 11, 12],
+                                    "both": [5, 6, 11, 12],
+                                },
+                                "head": {
+                                    "left": [0, 3, 4],
+                                    "right": [0, 3, 4],
+                                    "both": [0, 3, 4],
+                                },
+                                "neck": {
+                                    "left": [0, 5, 6],
+                                    "right": [0, 5, 6],
+                                    "both": [0, 5, 6],
+                                },
                             }
                             for kw, sides in BODY_PART_KW.items():
                                 if kw in script_lower:
                                     # Pick the right side based on what the script mentions
                                     if has_left and not has_right:
-                                        critiqued_kp_indices.update(
-                                            sides["left"])
+                                        critiqued_kp_indices.update(sides["left"])
                                     elif has_right and not has_left:
-                                        critiqued_kp_indices.update(
-                                            sides["right"])
+                                        critiqued_kp_indices.update(sides["right"])
                                     else:
-                                        critiqued_kp_indices.update(
-                                            sides["both"])
+                                        critiqued_kp_indices.update(sides["both"])
 
                             if critiqued_kp_indices:
                                 print(
-                                    f"[Pose] 🎯 Critiqued keypoint indices: {sorted(critiqued_kp_indices)}")
+                                    f"[Pose] 🎯 Critiqued keypoint indices: {sorted(critiqued_kp_indices)}"
+                                )
                                 # Build a set of (kp_a, kp_b) pairs that should be red
                                 # BOTH endpoints must be in the critiqued set to avoid color bleed
                                 critiqued_segments = set()
                                 for a, b in COCO_SKELETON:
                                     i_a, i_b = a - 1, b - 1  # 0-indexed
-                                    if i_a in critiqued_kp_indices and i_b in critiqued_kp_indices:
+                                    if (
+                                        i_a in critiqued_kp_indices
+                                        and i_b in critiqued_kp_indices
+                                    ):
                                         critiqued_segments.add((i_a, i_b))
 
                                 # Recolor matching gray skeleton vectors to red (#FF3B30)
@@ -1011,17 +978,24 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
                                     for i_a, i_b in critiqued_segments:
                                         if i_a >= len(person) or i_b >= len(person):
                                             continue
-                                        sx, sy = float(
-                                            person[i_a][0] / width), float(person[i_a][1] / height)
-                                        ex, ey = float(
-                                            person[i_b][0] / width), float(person[i_b][1] / height)
-                                        if (abs(vs[0]-sx) < 0.01 and abs(vs[1]-sy) < 0.01 and
-                                                abs(ve[0]-ex) < 0.01 and abs(ve[1]-ey) < 0.01):
+                                        sx, sy = float(person[i_a][0] / width), float(
+                                            person[i_a][1] / height
+                                        )
+                                        ex, ey = float(person[i_b][0] / width), float(
+                                            person[i_b][1] / height
+                                        )
+                                        if (
+                                            abs(vs[0] - sx) < 0.01
+                                            and abs(vs[1] - sy) < 0.01
+                                            and abs(ve[0] - ex) < 0.01
+                                            and abs(ve[1] - ey) < 0.01
+                                        ):
                                             vec["color"] = "#FF3B30"
                                             recolored += 1
                                             break
                                 print(
-                                    f"[Pose] 🎨 Recolored {recolored}/{len(critiqued_segments)} critiqued skeleton segments to red")
+                                    f"[Pose] 🎨 Recolored {recolored}/{len(critiqued_segments)} critiqued skeleton segments to red"
+                                )
 
                             # Merge skeleton with (now-snapped) correction vectors
                             existing_vectors = visuals.get("vectors") or []
@@ -1059,7 +1033,6 @@ IMPORTANT: Do NOT output the schema definition. Output actual coaching feedback 
 @modal.fastapi_endpoint(method="POST")
 async def analyze(request: Request):
     import json
-    import asyncio
     import time as _time
 
     t_request_start = _time.time()
@@ -1076,8 +1049,7 @@ async def analyze(request: Request):
     print(f"[Endpoint] 📥 Incoming POST /analyze")
     print(f"[Endpoint]   activity_type = {activity_type}")
     print(f"[Endpoint]   user_description = {user_description[:100]}")
-    print(
-        f"[Endpoint]   has_previous_analysis = {bool(previous_analysis_str)}")
+    print(f"[Endpoint]   has_previous_analysis = {bool(previous_analysis_str)}")
     print(f"[Endpoint]   has_video_file = {video_file is not None}")
 
     if not video_file:
@@ -1134,8 +1106,7 @@ async def analyze(request: Request):
             pose_data=pose_data,
         )
         t_llm_end = _time.time()
-        print(
-            f"[Endpoint] ✅ VL analysis complete in {t_llm_end - t_llm_start:.1f}s")
+        print(f"[Endpoint] ✅ VL analysis complete in {t_llm_end - t_llm_start:.1f}s")
         print(
             f"[Endpoint]   LLM status={llm_response.get('status')}, score={llm_response.get('progress_score')}, feedback_points={len(llm_response.get('feedback_points', []))}"
         )
@@ -1211,8 +1182,7 @@ async def analyze(request: Request):
                     {"_truncated": f"...and {n_vecs - 3} more vectors"}
                 )
     print(json.dumps(log_response, indent=2))
-    print(
-        f"\n[Endpoint] ⏱️  Total request time: {t_request_end - t_request_start:.1f}s")
+    print(f"\n[Endpoint] ⏱️  Total request time: {t_request_end - t_request_start:.1f}s")
     print(f"{'#'*60}\n")
 
     return Response(content=json.dumps(llm_response), media_type="application/json")
