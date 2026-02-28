@@ -17,8 +17,8 @@ export default function CompleteScreen() {
         <View style={globalStyles.fullScreen}>
             <View style={globalStyles.centerContent}>
                 <Text style={globalStyles.heading}>Session Complete</Text>
-                <Text style={globalStyles.subHeading}>Progress Score: {data.analysis.progress_score}</Text>
-                <Text style={globalStyles.subHeading}>{data.analysis.positive_note}</Text>
+                <Text style={globalStyles.subHeading}>Progress Score: {data.progress_score}</Text>
+                <Text style={globalStyles.subHeading}>{data.positive_note}</Text>
 
                 <TouchableOpacity
                     style={globalStyles.primaryButton}

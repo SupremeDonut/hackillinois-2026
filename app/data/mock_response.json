@@ -1,18 +1,33 @@
 {
   "status": "success",
-  "analysis": {
-    "mistake_timestamp_ms": 2500,
-    "coaching_script": "Great attempt! But try keeping your elbow tucked completely in right here.",
-    "positive_note": "Your stance looks very solid.",
-    "progress_score": 85
-  },
-  "visuals": {
-    "focus_point": {
-      "x": 0.5,
-      "y": 0.5
+  "positive_note": "Your stance looks very solid.",
+  "progress_score": 85,
+  "feedback_points": [
+    {
+      "mistake_timestamp_ms": 1000,
+      "coaching_script": "You dropped your elbow a bit early here.",
+      "visuals": {
+        "focus_point": {
+          "x": 0.4,
+          "y": 0.4
+        },
+        "overlay_type": "POSITION_MARKER",
+        "vectors": []
+      },
+      "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
     },
-    "overlay_type": "ANGLE_CORRECTION",
-    "vectors": []
-  },
-  "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+    {
+      "mistake_timestamp_ms": 2500,
+      "coaching_script": "And your follow through didn't fully extend on this frame. Try to snap your wrist more.",
+      "visuals": {
+        "focus_point": {
+          "x": 0.5,
+          "y": 0.5
+        },
+        "overlay_type": "ANGLE_CORRECTION",
+        "vectors": []
+      },
+      "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+    }
+  ]
 }
