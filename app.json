@@ -1,0 +1,47 @@
+{
+    "expo": {
+        "name": "MotionCoach",
+        "slug": "motioncoach",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "icon": "./assets/icon.png",
+        "userInterfaceStyle": "dark",
+        "newArchEnabled": true,
+        "splash": {
+            "image": "./assets/splash.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#000000"
+        },
+        "ios": {
+            "supportsTablet": true
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/adaptive-icon.png",
+                "backgroundColor": "#000000"
+            },
+            "permissions": [
+                "CAMERA",
+                "RECORD_AUDIO"
+            ]
+        },
+        "web": {
+            "favicon": "./assets/favicon.png"
+        },
+        "plugins": [
+            [
+                "expo-camera",
+                {
+                    "cameraPermission": "Allow MotionCoach to access your camera to record exercises.",
+                    "microphonePermission": "Allow MotionCoach to access your microphone to record audio."
+                }
+            ],
+            [
+                "expo-av",
+                {
+                    "microphonePermission": "Allow MotionCoach to access your microphone to record audio."
+                }
+            ]
+        ]
+    }
+}
