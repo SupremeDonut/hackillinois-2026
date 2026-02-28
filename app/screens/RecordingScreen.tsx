@@ -12,26 +12,46 @@ type RecordingRouteProp = RouteProp<RootStackParamList, 'Recording'>;
 export default function RecordingScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<RecordingRouteProp>();
-    const { activityType, previousData, description = `I want to improve my ${activityType} form.` } = route.params;
+    const { activityType, previousData, description = `I want to improve my ${activityType} form.`, goalId } = route.params;
 
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
     const cameraRef = useRef<CameraView>(null);
     const [isReady, setIsReady] = useState(false);
+    const [isPreCountdown, setIsPreCountdown] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
+    const [preCountdown, setPreCountdown] = useState(0);  // 3-second pre-recording countdown
+    const [recordingCountdown, setRecordingCountdown] = useState(5);  // 5-second recording countdown
     const [facing, setFacing] = useState<'front' | 'back'>('back');
-    const [countdown, setCountdown] = useState(5);
 
     useEffect(() => {
-        let timer: NodeJS.Timeout;
-        if (isRecording && countdown > 0) {
-            timer = setTimeout(() => setCountdown(c => c - 1), 1000);
-        } else if (isRecording && countdown === 0) {
+        if (!isPreCountdown || preCountdown <= 0) return;
+
+        const timer = setTimeout(() => setPreCountdown(c => c - 1), 1000);
+        return () => clearTimeout(timer);
+    }, [isPreCountdown, preCountdown]);
+
+    useEffect(() => {
+        if (!isPreCountdown || preCountdown !== 0) return;
+
+        setIsPreCountdown(false);
+        setIsRecording(true);
+        void actuallyStartRecording();
+    }, [isPreCountdown, preCountdown]);
+
+    useEffect(() => {
+        if (!isRecording || recordingCountdown <= 0) return;
+
+        const timer = setTimeout(() => setRecordingCountdown(c => c - 1), 1000);
+        return () => clearTimeout(timer);
+    }, [isRecording, recordingCountdown]);
+
+    useEffect(() => {
+        if (isRecording && recordingCountdown === 0) {
             stopRecording();
         }
-        return () => clearTimeout(timer);
-    }, [isRecording, countdown]);
+    }, [isRecording, recordingCountdown]);
 
     if (!cameraPermission || !micPermission) return <View />;
 
@@ -51,13 +71,19 @@ export default function RecordingScreen() {
     }
 
     const startRecording = async () => {
-        if (!cameraRef.current || !isReady) return;
-        setIsRecording(true);
-        setCountdown(5);
+        if (!cameraRef.current || !isReady || isPreCountdown || isRecording) return;
+        setIsPreCountdown(true);
+        setPreCountdown(3);  // Start 3-second pre-recording countdown
+        setRecordingCountdown(5);
+    };
+
+    const actuallyStartRecording = async () => {
+        if (!cameraRef.current) return;
+
         try {
             const video = await cameraRef.current.recordAsync({ maxDuration: 5 });
             if (video?.uri) {
-                navigation.replace('Analyzing', { videoUri: video.uri, activityType, description, previousData });
+                navigation.replace('Analyzing', { videoUri: video.uri, activityType, description, previousData, goalId });
             }
         } catch (error) {
             console.error('Recording failed:', error);
@@ -84,11 +110,15 @@ export default function RecordingScreen() {
                 onCameraReady={() => setIsReady(true)}
             />
 
-            {/* Red border + countdown during recording */}
-            {isRecording && (
+            {/* Countdown overlay */}
+            {(isPreCountdown || (isRecording && recordingCountdown > 0)) && (
                 <View style={S.recordingRing} pointerEvents="none">
-                    <Text style={S.countdownText}>{countdown}</Text>
-                    <Text style={S.warningText}>Keep the phone still!</Text>
+                    <Text style={S.countdownText}>
+                        {isPreCountdown ? preCountdown : recordingCountdown}
+                    </Text>
+                    <Text style={S.warningText}>
+                        {isPreCountdown ? 'Get ready!' : 'Keep the phone still!'}
+                    </Text>
                 </View>
             )}
 
@@ -99,23 +129,36 @@ export default function RecordingScreen() {
 
             {/* Bottom controls bar */}
             <View style={S.bottomBar}>
-                {!isRecording ? (
+                {!isRecording && !isPreCountdown ? (
                     <TouchableOpacity
                         style={S.flipBtn}
                         onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}
                     >
                         <Text style={S.flipBtnText}>↺ Flip</Text>
                     </TouchableOpacity>
+                ) : isPreCountdown ? (
+                    // During pre-count, show cancel button
+                    <TouchableOpacity
+                        style={[S.flipBtn, { backgroundColor: 'rgba(255,100,100,0.3)' }]}
+                        onPress={() => {
+                            setIsPreCountdown(false);
+                            setIsRecording(false);
+                            setPreCountdown(0);
+                            setRecordingCountdown(5);
+                        }}
+                    >
+                        <Text style={S.flipBtnText}>Cancel</Text>
+                    </TouchableOpacity>
                 ) : (
                     <View style={S.placeholder} />
                 )}
 
                 <TouchableOpacity
-                    style={[S.recordBtn, isRecording && S.recordBtnActive]}
+                    style={[S.recordBtn, (isRecording || isPreCountdown) && S.recordBtnActive]}
                     onPress={isRecording ? stopRecording : startRecording}
-                    disabled={!isReady}
+                    disabled={!isReady || isPreCountdown}
                 >
-                    <View style={isRecording ? S.recordInnerSquare : S.recordInnerCircle} />
+                    <View style={isRecording && recordingCountdown > 0 ? S.recordInnerSquare : S.recordInnerCircle} />
                 </TouchableOpacity>
 
                 <View style={S.placeholder} />

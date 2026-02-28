@@ -1,19 +1,32 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, ScrollView } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, ScrollView, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Audio, Video, ResizeMode } from 'expo-av';
 import { RootStackParamList } from '../types';
 import { Colors, Spacing, Radius } from '../styles/theme';
+import { addRunToGoal } from '../services/goalStore';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Complete'>;
 type CompleteRouteProp = RouteProp<RootStackParamList, 'Complete'>;
 
 const BAR_WIDTH = 280;
+type SeverityTab = 'major' | 'intermediate' | 'minor';
 
 export default function CompleteScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<CompleteRouteProp>();
-    const { data, activityType } = route.params;
+    const { data, activityType, goalId } = route.params;
+    const [activeTab, setActiveTab] = useState<SeverityTab>('major');
+    
+    // Audio playback state
+    const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+    const [isLoading, setIsLoading] = useState<number | null>(null);
+    const soundRef = useRef<Audio.Sound | null>(null);
+
+    // Video playback state
+    const [expandedVideoIndex, setExpandedVideoIndex] = useState<number | null>(null);
+    const videoRefs = useRef<{ [key: number]: any }>({});
 
     const score = data.progress_score;
     const delta = data.improvement_delta ?? null;
@@ -28,7 +41,25 @@ export default function CompleteScreen() {
     const deltaAnim = useRef(new Animated.Value(0)).current;
     const fadeIn = useRef(new Animated.Value(0)).current;
 
+    // Group feedback points by severity
+    const feedbackByLevel = {
+        major: (data.feedback_points || []).filter((fp: any) => fp.severity === 'major'),
+        intermediate: (data.feedback_points || []).filter((fp: any) => fp.severity === 'intermediate'),
+        minor: (data.feedback_points || []).filter((fp: any) => fp.severity === 'minor'),
+    };
+
+    const activeFeedback = feedbackByLevel[activeTab];
+
     useEffect(() => {
+        // Save run to goal if this session is associated with one
+        if (goalId) {
+            addRunToGoal(goalId, {
+                date: new Date().toISOString(),
+                score: data.progress_score,
+                improvement_delta: data.improvement_delta ?? null,
+            }).catch((e) => console.warn('[Goals] Failed to save run:', e));
+        }
+
         Animated.parallel([
             Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: true }),
             Animated.sequence([
@@ -36,12 +67,81 @@ export default function CompleteScreen() {
                 Animated.timing(deltaAnim, { toValue: deltaFill, duration: 500, useNativeDriver: false }),
             ]),
         ]).start();
+
+        return () => {
+            // Cleanup audio on unmount
+            if (soundRef.current) {
+                soundRef.current.unloadAsync();
+            }
+        };
     }, []);
 
     const deltaColor = deltaPositive ? Colors.success : Colors.error;
 
     // Score grade label — no emojis
     const grade = score >= 90 ? 'Elite' : score >= 75 ? 'Good' : score >= 60 ? 'Progress' : 'Keep Going';
+
+    // Handle audio playback
+    const handlePlayAudio = async (audioUrl: string, feedbackIndex: number) => {
+        try {
+            // Stop current playback if any
+            if (soundRef.current) {
+                await soundRef.current.unloadAsync();
+                soundRef.current = null;
+            }
+
+            // If clicking same item, just toggle off
+            if (playingIndex === feedbackIndex) {
+                setPlayingIndex(null);
+                return;
+            }
+
+            // Start loading
+            setIsLoading(feedbackIndex);
+
+            // Create and load sound from base64 or URI
+            const sound = new Audio.Sound();
+            await sound.loadAsync({ uri: audioUrl });
+            soundRef.current = sound;
+
+            // Setup playback end listener
+            sound.setOnPlaybackStatusUpdate((status: any) => {
+                if (status.didJustFinish) {
+                    setPlayingIndex(null);
+                }
+            });
+
+            // Play sound
+            await sound.playAsync();
+            setPlayingIndex(feedbackIndex);
+            setIsLoading(null);
+        } catch (error) {
+            console.error('Audio playback error:', error);
+            setIsLoading(null);
+        }
+    };
+
+    // Handle video playback
+    const handlePlayVideo = async (videoUrl: string, timestamp: number, feedbackIndex: number) => {
+        try {
+            if (expandedVideoIndex === feedbackIndex) {
+                setExpandedVideoIndex(null);
+                return;
+            }
+
+            setExpandedVideoIndex(feedbackIndex);
+
+            // Seek to mistake timestamp after a brief delay for the video to load
+            setTimeout(() => {
+                const videoRef = videoRefs.current[feedbackIndex];
+                if (videoRef) {
+                    videoRef.playAsync();
+                }
+            }, 500);
+        } catch (error) {
+            console.error('Video playback error:', error);
+        }
+    };
 
     return (
         <ScrollView
@@ -101,6 +201,115 @@ export default function CompleteScreen() {
                         </Text>
                     )}
                 </View>
+
+                {/* ── Feedback Section ── */}
+                {(data.feedback_points || []).length > 0 && (
+                    <View style={S.feedbackSection}>
+                        <Text style={S.feedbackSectionTitle}>Areas to Improve</Text>
+
+                        {/* Tab Buttons */}
+                        <View style={S.tabContainer}>
+                            {(['major', 'intermediate', 'minor'] as const).map((tab) => (
+                                <TouchableOpacity
+                                    key={tab}
+                                    style={[
+                                        S.tabButton,
+                                        activeTab === tab && S.tabButtonActive,
+                                    ]}
+                                    onPress={() => setActiveTab(tab)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text
+                                        style={[
+                                            S.tabButtonText,
+                                            activeTab === tab && S.tabButtonTextActive,
+                                        ]}
+                                    >
+                                        {tab.charAt(0).toUpperCase() + tab.slice(1)} ({feedbackByLevel[tab].length})
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {/* Feedback List */}
+                        <View style={S.feedbackList}>
+                            {activeFeedback.length > 0 ? (
+                                activeFeedback.map((feedback: any, idx: number) => (
+                                    <View key={idx} style={S.feedbackCard}>
+                                        {/* Video Player - Expanded */}
+                                        {expandedVideoIndex === idx && feedback.video_url && (
+                                            <View style={S.videoContainer}>
+                                                <Video
+                                                    ref={(ref) => {
+                                                        videoRefs.current[idx] = ref;
+                                                    }}
+                                                    source={{ uri: feedback.video_url }}
+                                                    style={S.videoPlayer}
+                                                    resizeMode={ResizeMode.CONTAIN}
+                                                    useNativeControls
+                                                    onLoadStart={() => {
+                                                        if (videoRefs.current[idx]) {
+                                                            videoRefs.current[idx].pauseAsync();
+                                                            videoRefs.current[idx].setPositionAsync(feedback.mistake_timestamp_ms);
+                                                        }
+                                                    }}
+                                                    onError={(error) => {
+                                                        console.error('Video error:', error);
+                                                    }}
+                                                />
+                                                <Text style={S.videoTimestamp}>
+                                                    @{(feedback.mistake_timestamp_ms / 1000).toFixed(1)}s
+                                                </Text>
+                                            </View>
+                                        )}
+
+                                        {/* Feedback Card Header */}
+                                        <View style={S.feedbackCardHeader}>
+                                            <Text style={S.feedbackCoachingScript}>{feedback.coaching_script}</Text>
+                                            <View style={S.buttonGroup}>
+                                                {feedback.video_url && (
+                                                    <TouchableOpacity
+                                                        style={[
+                                                            S.actionButton,
+                                                            expandedVideoIndex === idx && S.actionButtonActive,
+                                                        ]}
+                                                        onPress={() => handlePlayVideo(feedback.video_url, feedback.mistake_timestamp_ms, idx)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <Text style={S.actionButtonText}>
+                                                            {expandedVideoIndex === idx ? '✕' : '▶'}
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                                {feedback.audio_url && (
+                                                    <TouchableOpacity
+                                                        style={[
+                                                            S.actionButton,
+                                                            playingIndex === idx && S.actionButtonActive,
+                                                        ]}
+                                                        onPress={() => handlePlayAudio(feedback.audio_url, idx)}
+                                                        disabled={isLoading === idx}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        {isLoading === idx ? (
+                                                            <ActivityIndicator size="small" color={Colors.background} />
+                                                        ) : (
+                                                            <Text style={S.actionButtonText}>
+                                                                {playingIndex === idx ? '⏸' : '♪'}
+                                                            </Text>
+                                                        )}
+                                                    </TouchableOpacity>
+                                                )}
+                                            </View>
+                                        </View>
+                                    </View>
+                                ))
+                            ) : (
+                                <Text style={S.noFeedbackText}>No {activeTab} issues found.</Text>
+                            )}
+                        </View>
+                    </View>
+                )}
 
                 {/* ── Actions ── */}
                 <TouchableOpacity
@@ -274,5 +483,123 @@ const S = StyleSheet.create({
         color: Colors.textSecondary,
         fontSize: 16,
         fontWeight: '600',
+    },
+    feedbackSection: {
+        width: '100%',
+        marginBottom: Spacing.xl,
+    },
+    feedbackSectionTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.textSecondary,
+        letterSpacing: 1.2,
+        marginBottom: Spacing.md,
+    },
+    tabContainer: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+        marginBottom: Spacing.md,
+    },
+    tabButton: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: Radius.md,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+        backgroundColor: Colors.surface,
+        alignItems: 'center',
+    },
+    tabButtonActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    tabButtonText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+    },
+    tabButtonTextActive: {
+        color: Colors.background,
+    },
+    feedbackList: {
+        backgroundColor: Colors.surface,
+        borderRadius: Radius.lg,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+        padding: Spacing.md,
+        minHeight: 100,
+    },
+    feedbackCard: {
+        backgroundColor: Colors.backgroundAlt,
+        borderRadius: Radius.md,
+        padding: Spacing.md,
+        marginBottom: Spacing.sm,
+    },
+    videoContainer: {
+        backgroundColor: '#000',
+        borderRadius: Radius.md,
+        overflow: 'hidden',
+        marginBottom: Spacing.md,
+        height: 200,
+    },
+    videoPlayer: {
+        width: '100%',
+        height: '100%',
+    },
+    videoTimestamp: {
+        position: 'absolute',
+        bottom: Spacing.sm,
+        left: Spacing.sm,
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        color: Colors.background,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 4,
+        borderRadius: Radius.sm,
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    feedbackCardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: Spacing.sm,
+    },
+    feedbackCoachingScript: {
+        fontSize: 14,
+        color: Colors.text,
+        lineHeight: 20,
+        flex: 1,
+    },
+    buttonGroup: {
+        flexDirection: 'row',
+        gap: Spacing.xs,
+    },
+    actionButton: {
+        width: 40,
+        height: 40,
+        borderRadius: Radius.full,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0,
+    },
+    actionButtonActive: {
+        backgroundColor: Colors.success,
+    },
+    actionButtonText: {
+        fontSize: 16,
+        color: Colors.background,
+    },
+    feedbackAudioLabel: {
+        fontSize: 12,
+        color: Colors.primary,
+        fontWeight: '600',
+    },
+    noFeedbackText: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+        paddingVertical: Spacing.md,
     },
 });

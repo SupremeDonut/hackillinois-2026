@@ -9,6 +9,7 @@ import RecordingScreen from './app/screens/RecordingScreen';
 import AnalyzingScreen from './app/screens/AnalyzingScreen';
 import PlaybackScreen from './app/screens/PlaybackScreen';
 import CompleteScreen from './app/screens/CompleteScreen';
+import GoalDetailScreen from './app/screens/GoalDetailScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -27,6 +28,7 @@ export default function App() {
                 <Stack.Screen name="Analyzing" component={AnalyzingScreen} />
                 <Stack.Screen name="Playback" component={PlaybackScreen} />
                 <Stack.Screen name="Complete" component={CompleteScreen} />
+                <Stack.Screen name="GoalDetail" component={GoalDetailScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

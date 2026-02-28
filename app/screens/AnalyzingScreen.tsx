@@ -12,7 +12,7 @@ type AnalyzingRouteProp = RouteProp<RootStackParamList, 'Analyzing'>;
 export default function AnalyzingScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<AnalyzingRouteProp>();
-    const { videoUri, activityType, description, previousData } = route.params;
+    const { videoUri, activityType, description, previousData, goalId } = route.params;
 
     // Two rotating arcs for a clean spinner feel
     const rotate1 = useRef(new Animated.Value(0)).current;
@@ -42,6 +42,7 @@ export default function AnalyzingScreen() {
                     videoUri,
                     data: data as AnalysisResponse,
                     activityType,
+                    goalId,
                 });
             }
         };

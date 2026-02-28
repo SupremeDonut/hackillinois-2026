@@ -14,7 +14,7 @@ type PlaybackRouteProp = RouteProp<RootStackParamList, 'Playback'>;
 export default function PlaybackScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<PlaybackRouteProp>();
-    const { videoUri, data, activityType } = route.params;
+    const { videoUri, data, activityType, goalId } = route.params;
 
     const videoRef = useRef<Video>(null);
     const soundRef = useRef<Audio.Sound | null>(null);
@@ -130,7 +130,7 @@ export default function PlaybackScreen() {
     };
 
     const finishSession = () => {
-        navigation.replace('Complete', { data, activityType });
+        navigation.replace('Complete', { data, activityType, goalId });
     };
 
     return (

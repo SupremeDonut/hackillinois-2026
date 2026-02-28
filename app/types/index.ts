@@ -1,5 +1,23 @@
 export type ActivityType = 'basketball_shot' | 'golf_swing' | 'tennis_serve' | 'other';
 
+// ─── Goal / Progression ───────────────────────────────────────────────────────
+
+export interface GoalRun {
+    date: string;          // ISO timestamp of the session
+    score: number;         // 0–100 form score
+    improvement_delta: number | null;
+}
+
+export interface Goal {
+    id: string;
+    name: string;          // user-defined goal description
+    activityType: string;
+    createdAt: string;     // ISO timestamp
+    runs: GoalRun[];
+}
+
+// ─── Feedback ─────────────────────────────────────────────────────────────────
+
 export interface FeedbackPoint {
     mistake_timestamp_ms: number;
     coaching_script: string;
@@ -28,8 +46,9 @@ export interface AnalysisResponse {
 
 export type RootStackParamList = {
     Home: undefined;
-    Recording: { activityType: ActivityType | string; description?: string; previousData?: AnalysisResponse };
-    Analyzing: { videoUri: string; activityType: ActivityType | string; description: string; previousData?: AnalysisResponse };
-    Playback: { videoUri: string; data: AnalysisResponse; activityType: ActivityType | string };
-    Complete: { data: AnalysisResponse; activityType: ActivityType | string };
+    Recording: { activityType: ActivityType | string; description?: string; previousData?: AnalysisResponse; goalId?: string };
+    Analyzing: { videoUri: string; activityType: ActivityType | string; description: string; previousData?: AnalysisResponse; goalId?: string };
+    Playback: { videoUri: string; data: AnalysisResponse; activityType: ActivityType | string; goalId?: string };
+    Complete: { data: AnalysisResponse; activityType: ActivityType | string; goalId?: string };
+    GoalDetail: { goalId: string };
 };
