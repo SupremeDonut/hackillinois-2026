@@ -17,6 +17,9 @@ export default function PlaybackScreen() {
     const videoRef = useRef<Video>(null);
     const soundRef = useRef<Audio.Sound | null>(null);
 
+    // Lock ref to prevent the high-frequency 50ms loop from triggering the same audio repeatedly point before React state updates
+    const hasTriggeredCurrentFeedback = useRef(false);
+
     // Sync Engine State
     const [isPausedForFeedback, setIsPausedForFeedback] = useState(false);
     const [showingFrame, setShowingFrame] = useState(false); // Controls the two-step UI
@@ -26,59 +29,48 @@ export default function PlaybackScreen() {
     // Derive the current target based on index
     const currentFeedback = data.feedback_points?.[currentFeedbackIndex];
 
-    // Load ElevenLabs Audio for the CURRENT feedback point
-    useEffect(() => {
-        let soundObject: Audio.Sound;
-
-        const prepareAudio = async () => {
-            // Clean up previous audio if it exists
-            if (soundRef.current) {
-                await soundRef.current.unloadAsync();
-                soundRef.current = null;
-            }
-
-            if (!currentFeedback?.audio_url) return;
-
-            try {
-                await Audio.setAudioModeAsync({
-                    playsInSilentModeIOS: true,
-                    shouldDuckAndroid: false
-                });
-
-                const { sound } = await Audio.Sound.createAsync(
-                    { uri: currentFeedback.audio_url },
-                    { shouldPlay: false }
-                );
-
-                soundRef.current = sound;
-            } catch (e) {
-                console.error("Failed to load ElevenLabs Audio:", e);
-            }
-        };
-
-        prepareAudio();
-
-        return () => {
-            if (soundRef.current) {
-                soundRef.current.unloadAsync();
-            }
-        };
-    }, [currentFeedbackIndex, currentFeedback?.audio_url]);
-
     // The Sync Engine
-    const handlePlaybackStatusUpdate = (status: AVPlaybackStatus) => {
+    const handlePlaybackStatusUpdate = async (status: AVPlaybackStatus) => {
         if (!status.isLoaded) return;
 
         // 1. Trigger the specific Coaching Moment
-        if (currentFeedback && !isPausedForFeedback && status.positionMillis >= currentFeedback.mistake_timestamp_ms) {
-            if (videoRef.current) {
-                videoRef.current.pauseAsync();
-            }
-            setIsPausedForFeedback(true);
-            setShowingFrame(false); // Make sure we start with the text box, not the frame
+        if (
+            currentFeedback &&
+            !isPausedForFeedback &&
+            !hasTriggeredCurrentFeedback.current &&
+            status.positionMillis >= currentFeedback.mistake_timestamp_ms
+        ) {
 
-            if (soundRef.current) {
-                soundRef.current.playAsync(); // Start playing voice for this specific instruction
+            // Immediately lock to prevent the next 50ms tick from firing this block again
+            hasTriggeredCurrentFeedback.current = true;
+
+            if (videoRef.current) {
+                await videoRef.current.pauseAsync();
+            }
+
+            setIsPausedForFeedback(true);
+            setShowingFrame(false);
+
+            if (currentFeedback.audio_url) {
+                try {
+                    await Audio.setAudioModeAsync({
+                        playsInSilentModeIOS: true,
+                        shouldDuckAndroid: false
+                    });
+
+                    if (soundRef.current) {
+                        await soundRef.current.unloadAsync();
+                    }
+
+                    const { sound } = await Audio.Sound.createAsync(
+                        { uri: currentFeedback.audio_url },
+                        { shouldPlay: true }
+                    );
+
+                    soundRef.current = sound;
+                } catch (e) {
+                    console.error("Failed to play AI Voice on trigger:", e);
+                }
             }
         }
 
@@ -88,24 +80,30 @@ export default function PlaybackScreen() {
         }
     };
 
-    const handleShowFrame = () => {
-        // Step 1 -> Step 2 transition
+    const handleShowFrame = async () => {
         setShowingFrame(true);
+
+        // Mute the audio instantly the moment they dismiss the text box to look at the frame
+        if (soundRef.current) {
+            await soundRef.current.stopAsync();
+            await soundRef.current.unloadAsync();
+            soundRef.current = null;
+        }
     };
 
-    const handleContinue = () => {
-        // End of Step 2 -> Resume Video
+    const handleContinue = async () => {
         setIsPausedForFeedback(false);
         setShowingFrame(false);
 
-        if (soundRef.current) {
-            soundRef.current.stopAsync();
-        }
+        // Reset the strict lock for the NEXT feedback point in the sequence
+        hasTriggeredCurrentFeedback.current = false;
 
+        // Advance to the next coaching point in the array
         setCurrentFeedbackIndex(prev => prev + 1);
 
+        // Resume video playback
         if (videoRef.current) {
-            videoRef.current.playAsync();
+            await videoRef.current.playAsync();
         }
     };
 
@@ -186,7 +184,6 @@ export default function PlaybackScreen() {
 
 const S = StyleSheet.create({
     videoContainer: {
-        flex: 1,
         width: '100%',
         aspectRatio: 9 / 16,
         backgroundColor: '#000',
