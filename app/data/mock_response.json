@@ -1,0 +1,36 @@
+{
+  "status": "success",
+  "analysis": {
+    "mistake_timestamp_ms": 1450,
+    "coaching_script": "Great swing, but try extending your elbow a bit more on the follow-through.",
+    "positive_note": "Great swing",
+    "progress_score": 85,
+    "improvement_delta": 5,
+    "technical_stats": {
+      "observed_angle": 90,
+      "target_angle": 120
+    }
+  },
+  "visuals": {
+    "focus_point": {
+      "x": 0.5,
+      "y": 0.3
+    },
+    "overlay_type": "ANGLE_CORRECTION",
+    "vectors": [
+      {
+        "start": [0.4, 0.4],
+        "end": [0.5, 0.5],
+        "color": "red",
+        "label": "Current"
+      },
+      {
+        "start": [0.4, 0.4],
+        "end": [0.6, 0.3],
+        "color": "green",
+        "label": "Target"
+      }
+    ]
+  },
+  "audio_url": "https://example.com/mock-audio.mp3"
+}

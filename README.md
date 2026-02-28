@@ -330,28 +330,21 @@ Convert normalized coordinates to pixels:
 
 ```
 /app
+  App.tsx              # Main Entry Point & Navigation
   /screens
-    HomeScreen.tsx
-    RecordingScreen.tsx
-    PlaybackScreen.tsx
-    GoalsScreen.tsx
+    RecordingScreen.tsx # Dev 1: Camera and File Upload isolated here
+    PlaybackScreen.tsx  # Dev 1: Video looping and AV timing logic
   /components
-    SVGOverlay.tsx
-    ActivityPicker.tsx
-    ProgressCard.tsx
-  /hooks
-    useCoachingSession.ts
-    useVideoPlayer.ts
+    SVGOverlay.tsx      # Dev 3: Isolated math drawing; takes JSON, draws vectors
   /services
-    api.ts
-    storage.ts
-  /types
-    schemas.ts
+    api.ts              # Dev 1/Dev 2: Multipart/form-data upload logic
+  /data
+    mock_response.json  # Dev 3: Hardcoded JSON to build overlays before backend exists
 
 /backend
-  main.py              # Modal app entry
-  gemini_client.py     # Gemini 3.1 prompt logic
-  elevenlabs_client.py # TTS logic
+  main.py               # Dev 2: Modal App entry and FastAPI orchestration
+  gemini_client.py      # Dev 2: Gemini 3.1 Prompting and SDK logic
+  elevenlabs_client.py  # Dev 2: TTS proxying and cloud storage logic
 ```
 
 ---
