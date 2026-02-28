@@ -9,6 +9,11 @@ dependencies = [
     "modal",
     "httpx",
     "elevenlabs",
+    "outlines",
+    "google-generativeai>=0.8.6",
+    "kaggle>=2.0.0",
+    "opencv-python>=4.13.0.92",
+    "mediapipe>=0.10.32",
 ]
 [tool.pyright]
 venvPath = "."      
