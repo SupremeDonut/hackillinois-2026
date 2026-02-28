@@ -199,12 +199,32 @@ export default function SVGOverlay({
     };
 
     const renderOverlay = () => {
-      if (overlayType === 'POSITION_MARKER') return renderPositionMarker();
-      if (overlayType === 'PATH_TRACE') return renderPathTrace();
+      // Always render vectors (skeleton + corrections) if they exist
+      const vectorElements = vectors.length > 0 ? renderVectors() : null;
+      
+      // Add type-specific overlay on top
+      if (overlayType === 'POSITION_MARKER') {
+        return (
+          <>
+            {vectorElements}
+            {renderPositionMarker()}
+          </>
+        );
+      }
+      
+      if (overlayType === 'PATH_TRACE') {
+        return (
+          <>
+            {vectorElements}
+            {renderPathTrace()}
+          </>
+        );
+      }
+      
       // default ANGLE_CORRECTION
       return (
         <>
-          {renderVectors()}
+          {vectorElements}
           {renderAngleArc()}
         </>
       );
