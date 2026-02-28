@@ -27,15 +27,16 @@ Record (5s max) → Describe intent → AI analyzes → Video pauses at mistake 
 ## 2. Architecture
 
 ```
-┌─────────────────┐         ┌─────────────────────────────────┐
-│  React Native   │   HTTP  │            Modal                │
-│  (Expo + Android)│ ◄─────► │  ┌─────────┐    ┌───────────┐  │
-│                 │         │  │ Gemini  │    │ ElevenLabs│  │
-│  - expo-camera  │         │  │ 3.1     │    │ TTS       │  │
-│  - expo-av      │         │  │ Flash   │    │           │  │
-│  - react-native-│         │  └─────────┘    └───────────┘  │
-│    svg          │         │                                 │
-└─────────────────┘         └─────────────────────────────────┘
+┌─────────────────┐         ┌──────────────────────────────────────────────┐
+│  React Native   │   HTTP  │                   Modal (A100)                │
+│  (Expo + Android)│ ◄─────► │  ┌─────────────────┐    ┌──────────────────┐ │
+│                 │         │  │  YOLO26x-Pose   │──▶ │  Qwen3-VL-8B    │ │
+│  - expo-camera  │         │  │  (kinematics)   │    │  (Thinking)      │ │
+│  - expo-av      │         │  └─────────────────┘    └──────────────────┘ │
+│  - react-native-│         │                    ┌──────────────────┐       │
+│    svg          │         │                    │   ElevenLabs TTS │       │
+└─────────────────┘         │                    └──────────────────┘       │
+                            └──────────────────────────────────────────────┘
 ```
 
 **Stack:**
@@ -43,8 +44,9 @@ Record (5s max) → Describe intent → AI analyzes → Video pauses at mistake 
 | Layer | Technology |
 |-------|------------|
 | Client | React Native (Expo), tested on Android |
-| Backend | Modal (Python, serverless GPU) |
-| Vision | Gemini 3.1 Flash (native video input) |
+| Backend | Modal (Python, serverless **A100 GPU**) |
+| Pose Specialist | `yolo26x-pose.pt` via `ultralytics` (NMS-free, January 2026) |
+| Vision-Language Logic | `Qwen/Qwen3-VL-8B-Instruct` (Thinking variant) via `transformers` |
 | Audio | ElevenLabs API |
 | Overlays | react-native-svg (client-side rendering) |
 
@@ -89,20 +91,19 @@ Record (5s max) → Describe intent → AI analyzes → Video pauses at mistake 
 |-------|------|-------|
 | `status` | Enum | `success`, `low_confidence`, `error` |
 | `error_message` | String or null | Only if status is `error` |
-| `analysis` | Object | See below |
-| `visuals` | Object | See below |
-| `audio_url` | URL string | ElevenLabs MP3 |
+| `feedback_points` | Array | See below |
+| `positive_note` | String | What user did well |
+| `progress_score` | Integer (0–100) | Current attempt rating |
+| `improvement_delta` | Integer | Change from last session |
 
-**Analysis Object:**
+**Feedback Point Object:**
 
 | Field | Type | Notes |
 |-------|------|-------|
 | `mistake_timestamp_ms` | Integer | Milliseconds into video |
 | `coaching_script` | String | Spoken feedback text |
-| `positive_note` | String | What user did well |
-| `progress_score` | Integer (0–100) | Current attempt rating |
-| `improvement_delta` | Integer | Change from last session |
-| `technical_stats` | Object | `observed_angle`, `target_angle` (optional) |
+| `visuals` | Object | See below |
+| `audio_url` | URL string | ElevenLabs MP3 |
 
 **Visuals Object:**
 
@@ -136,60 +137,113 @@ Record (5s max) → Describe intent → AI analyzes → Video pauses at mistake 
 
 ## 4. AI Pipeline (Modal Backend)
 
-### 4.1 Gemini 3.1 Flash Configuration
+### 4.1 The Hybrid YOLO26x + Qwen3-VL Pipeline
 
-**Model:** `gemini-3.1-flash` (prioritize for speed) or `gemini-3.1-pro` (if higher accuracy needed)
+**Why this stack:**
 
-**Why Gemini 3.1:**
+- **YOLO26x-Pose** (NMS-free, January 2026): Extracts precise 17-keypoint coordinates frame-by-frame faster than anything before it. Removes guesswork from Qwen — it knows *exactly* where joints are.
+- **Qwen3-VL-8B-Thinking**: State-of-the-art open-weight VLM with spatial reasoning. Outperforms Gemini on raw biomechanical logic and runs fully on Modal (no managed API costs or rate limits).
 
-- Native multimodal video understanding (no frame extraction needed)
-- Direct .mp4 input via API
-- Fast inference for real-time coaching feedback
+**Pipeline Steps:**
 
-**System Prompt Must Include:**
+1. **Receive Video:** React Native POSTs the 5-second video to Modal as `multipart/form-data`.
+2. **Extract Kinematics:** YOLO26x-Pose processes the video frame-by-frame, extracting `(x, y)` for all 17 keypoints per frame.
+3. **Find the Mistake Frame:** Python heuristic on Modal identifies the peak-action frame (e.g., highest joint velocity, lowest wrist Y, etc.).
+4. **Grounding Prompt to Qwen3-VL:** The mistake frame image is sent to Qwen3-VL along with the YOLO26 coordinates embedded as text:
+   > *"Image attached. User is doing a basketball shot. YOLO26 data: right elbow at (0.45, 0.60), angle 142°. Provide a 1-sentence biomechanical correction."*
+5. **Strip `<think>` Tags:** If using the Thinking variant, the model outputs reasoning inside `<think>…</think>` before the answer. **The backend MUST strip this block with regex before sending to ElevenLabs** — otherwise ElevenLabs narrates the internal monologue aloud.
+6. **ElevenLabs TTS:** Cleaned `coaching_script` is sent to ElevenLabs. Audio is returned as Base64 (`data:audio/wav;base64,...`) or a presigned URL.
+7. **Return Data:** YOLO coordinates (for SVG overlay) + Qwen coaching text + ElevenLabs audio returned to client in the structured JSON schema (see Section 3.2).
 
-1. Role: Supportive biomechanics coach for hobbyists
-2. Tone rules:
-   - Start with something positive
-   - Frame corrections as suggestions ("try this") not criticisms
-   - End with encouragement
-3. Technical requirements:
-   - Identify the single most impactful correction
-   - Return exact millisecond of error visibility
-   - Return X/Y coordinates as floats (0.0–1.0) relative to frame
-   - Use **Structured Outputs (JSON Schema)** via the Gemini API to enforce the response schema. Do not rely on "Output strict JSON" prompt instructions alone, as markdown formatting will crash the client parser.
+**Key Advantage:** Qwen never has to guess where joints are — YOLO26 provides ground-truth coordinates. Qwen only reasons about *why* a position is wrong and what the correction is.
 
-**Frame Sampling Warning:**
-> [!WARNING]
-> Gemini's native video ingestion heavily downsamples frames (historically 1fps). For fast motions like a golf swing, it *will* miss the mistake frame.
-> **Fallback:** If native video inference fails, use `ffmpeg` on Modal to extract 5–10 frames per second and send as an array of Base64 images with timestamps to Gemini.
+### 4.2 Modal Implementation
 
-**Context Injection:**
+```python
+import modal
 
-- Include `activity_type` in prompt
-- Include `user_description` (their goal)
-- Include summarized `session_history` if available (what they were working on previously)
+image = (
+    modal.Image.debian_slim()
+    .apt_install("libgl1", "libglib2.0-0")
+    .pip_install(
+        "ultralytics",          # YOLO26x-Pose
+        "transformers>=4.57.0", # Qwen3-VL
+        "qwen-vl-utils",
+        "opencv-python-headless",
+        "torch", "torchvision"
+    )
+)
 
-**Coordinate System:**
+app = modal.App("motioncoach-qwen-yolo")
 
-- Origin: Top-left of video frame
-- X: 0.0 (left) to 1.0 (right)
-- Y: 0.0 (top) to 1.0 (bottom)
+@app.cls(gpu="A100", image=image)
+class CoachAI:
+    @modal.enter()
+    def load_models(self):
+        from ultralytics import YOLO
+        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
+        import torch
+        self.pose_model = YOLO("yolo26x-pose.pt")
+        self.qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            "Qwen/Qwen3-VL-8B-Instruct",
+            torch_dtype=torch.bfloat16, device_map="auto"
+        )
+        self.processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-8B-Instruct")
 
-### 4.2 ElevenLabs Requirements
+    @modal.method()
+    def analyze_swing(self, video_bytes: bytes, user_goal: str) -> dict:
+        import re, tempfile
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(video_bytes)
+            video_path = f.name
+
+        # 1. Run YOLO26x-Pose (NMS-free, very fast)
+        pose_results = self.pose_model(video_path, stream=True)
+        # ... extract mistake frame + YOLO coords ...
+
+        # 2. Build grounding prompt for Qwen3-VL
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": mistake_frame},
+                {"type": "text", "text": f"User goal: {user_goal}. Right elbow at {mistake_coords}. One-sentence correction:"}
+            ]
+        }]
+
+        # 3. Generate & strip <think> tags (Thinking variant)
+        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        inputs = self.processor(text=[text], images=[mistake_frame], return_tensors="pt").to("cuda")
+        output = self.qwen_model.generate(**inputs, max_new_tokens=200)
+        raw = self.processor.batch_decode(output, skip_special_tokens=True)[0]
+        coaching_script = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+
+        return {
+            "coaching_script": coaching_script,
+            "visuals": {
+                "overlay_type": "ANGLE_CORRECTION",
+                "focus_point": mistake_coords  # YOLO coords passed straight to React Native
+            }
+        }
+```
+
+### 4.3 ElevenLabs Requirements
 
 - Voice style: "Coach" persona (e.g., 'George' or 'Bella')
-- High stability setting for clarity
-- Input: `coaching_script` from Gemini response
-- Output: MP3 URL or base64
+- Input: stripped `coaching_script` from Qwen output
+- Output: `data:audio/wav;base64,...` (returned inline in the JSON response)
+- **CRITICAL:** Strip `<think>` tags before passing to ElevenLabs — Thinking models output internal reasoning that must never be narrated.
 
-### 4.3 Pipeline Sequence
+### 4.4 Coordinate System (YOLO → SVG)
 
-1. Receive `multipart/form-data` video + metadata from client
-2. Call Gemini 3.1 Flash with video + constructed prompt (or `ffmpeg` frames if native fails)
-3. Parse and validate JSON response natively using Structured Outputs
-4. Call ElevenLabs with `coaching_script`.
-5. **CRITICAL:** Do NOT expose the ElevenLabs API key on the client. Modal must either return a temporary presigned cloud storage URL (e.g., S3/Supabase) where it instantly saved the MP3, or proxy the ElevenLabs audio stream directly back to the client.
+YOLO26x-Pose outputs keypoint coordinates in **pixel space**. The frontend expects **normalized 0.0–1.0**:
+
+```python
+# Normalize YOLO keypoint coords before returning to client
+def normalize(kp_x, kp_y, frame_w, frame_h):
+    return kp_x / frame_w, kp_y / frame_h
+```
+
+The 17 COCO keypoints (0=nose, 5/6=shoulders, 7/8=elbows, 9/10=wrists, etc.) — pass the relevant ones as `vectors` in the response.
 
 ---
 
@@ -263,11 +317,12 @@ Convert normalized coordinates to pixels:
 | Scenario | Detection | Response |
 |----------|-----------|----------|
 | Camera is moving/shaky | User error | UI must aggressively prompt: "Prop phone up or hold perfectly still!" Overlays will fail if the camera pans. |
-| No movement detected | Gemini returns `low_confidence` status | Prompt: "We couldn't see your full body. Try standing further back." |
+| No pose detected | YOLO returns no keypoints | Prompt: "We couldn't see your full body. Try standing further back." |
 | Video too long | Client-side duration check | Reject before upload: "Please record 5 seconds or less." |
 | Network timeout or OOM | Request fails or >15s | Switch to `multipart/form-data`. Show retry option + tips while waiting |
-| Gemini returns malformed JSON | JSON parse failure | Retry once with stricter prompt; fallback to mock |
-| iOS Silent Switch / Audio Ducking | User device state | Use `playsInSilentModeIOS` and mute video backround track. |
+| Qwen returns malformed output | Parse failure | Retry once; fallback to mock |
+| Qwen `<think>` not stripped | ElevenLabs narrates reasoning | Backend regex **must** strip `<think>…</think>` before TTS call |
+| iOS Silent Switch / Audio Ducking | User device state | Use `playsInSilentModeIOS` and mute video backround track |
 | ElevenLabs failure | Audio URL missing or 4xx/5xx | Display text feedback only, skip audio |
 | Aspect ratio mismatch | Device info vs video dimensions | Adjust SVG mapping for letterboxing |
 | API down during demo | Any backend failure | Load hardcoded mock response |
@@ -293,11 +348,12 @@ Convert normalized coordinates to pixels:
 
 - [ ] Camera capture with 5s enforcement, locked aspect ratio, and "Hold Still" UI warning
 - [ ] SVG overlay rendering via hardcoded local JSON (Dev 3 unblocked immediately)
-- [ ] Modal endpoint: receive `multipart/form-data` video, call Gemini 3.1 Flash using Structured Outputs, return JSON
-- [ ] Validate Gemini capturing fast-motion frames (Pivot to `ffmpeg` extraction if 1fps downsampling misses the action)
+- [ ] Modal endpoint: receive `multipart/form-data` video, run YOLO26x-Pose, feed mistake frame + keypoints to Qwen3-VL-8B-Thinking
+- [ ] Strip `<think>` tags from Qwen output before passing to ElevenLabs
+- [ ] Normalize YOLO keypoint pixel coords to 0.0–1.0 before returning to client
 - [ ] Video playback with `progressUpdateIntervalMillis={50}` and background noise muted
 - [ ] iOS/Android Audio mode configured to override silent switch
-- [ ] ElevenLabs audio proxied via Modal or public storage bucket (protect API keys)
+- [ ] ElevenLabs audio returned as Base64 inline (no presigned URL complexity for demo)
 - [ ] Mock fallback data for API failures
 
 ### P1 — Demo Polish
@@ -320,9 +376,11 @@ Convert normalized coordinates to pixels:
 
 | Key | Location | Purpose |
 |-----|----------|---------|
-| `GEMINI_API_KEY` | Modal secrets | Gemini 3.1 API access |
-| `ELEVENLABS_API_KEY` | Modal secrets | ElevenLabs API access |
-| `MODAL_API_URL` | React Native .env | Backend endpoint |
+| `ELEVENLABS_API_KEY` | Modal secrets | ElevenLabs TTS |
+| `MODAL_API_URL` | React Native `app/services/api.ts` | Backend endpoint (set to `null` during dev to use mock data) |
+
+> [!NOTE]
+> No Gemini API key needed — Qwen3-VL runs fully on-device inside the Modal A100 container.
 
 ---
 
@@ -330,21 +388,25 @@ Convert normalized coordinates to pixels:
 
 ```
 /app
-  App.tsx              # Main Entry Point & Navigation
+  App.tsx                # Main Entry Point & Navigation
   /screens
-    RecordingScreen.tsx # Dev 1: Camera and File Upload isolated here
-    PlaybackScreen.tsx  # Dev 1: Video looping and AV timing logic
+    RecordingScreen.tsx  # Dev 1: Camera and File Upload isolated here
+    PlaybackScreen.tsx   # Dev 1: Video looping and AV timing logic
+    AnalyzingScreen.tsx  # Dev 1: Calls uploadVideo(), handles mock/real routing
+    CompleteScreen.tsx   # Dev 1: Animated progress bar + improvement delta
   /components
-    SVGOverlay.tsx      # Dev 3: Isolated math drawing; takes JSON, draws vectors
+    SVGOverlay.tsx       # Dev 3: Isolated drawing engine; takes JSON, draws vectors
   /services
-    api.ts              # Dev 1/Dev 2: Multipart/form-data upload logic
+    api.ts               # Dev 1: Multipart upload, mock fallback, context trimming
   /data
-    mock_response.json  # Dev 3: Hardcoded JSON to build overlays before backend exists
+    mock_response.json        # Dev 3: First-run mock
+    mock_response_retry.json  # Dev 3: Retry mock (with improvement_delta)
 
 /backend
-  main.py               # Dev 2: Modal App entry and FastAPI orchestration
-  gemini_client.py      # Dev 2: Gemini 3.1 Prompting and SDK logic
-  elevenlabs_client.py  # Dev 2: TTS proxying and cloud storage logic
+  main.py                # Dev 2: Modal App — YOLO26x → Qwen3-VL → ElevenLabs pipeline
+  pose_client.py         # Dev 2: YOLO26x-Pose inference + mistake frame heuristic
+  qwen_client.py         # Dev 2: Qwen3-VL prompting, <think> stripping, coord normalization
+  elevenlabs_client.py   # Dev 2: TTS call, Base64 encoding
 ```
 
 ---

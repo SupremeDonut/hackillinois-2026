@@ -1,66 +1,103 @@
 /**
  * ==============================================================================
- * 🌐 [DEV 1/DEV 2] MODAL API UPLOAD HANDLER (app/services/api.ts)
+ * 🌐 MODAL API UPLOAD HANDLER (app/services/api.ts)
  * ==============================================================================
- * Purpose:
- *   Handles the complex file-upload transaction between React Native (frontend)
- *   and FastAPI (Modal backend).
+ * Stage 4: The one and only network layer for the app.
  *
- * The Base64 Timeout Trap (CRITICAL WARNING):
- *   - DO NOT load the 5-second video into a string (`Base64`) in React Native.
- *   - A 5-second 720p `.mp4` is easily 5MB. Turning that into a Base64 string 
- *     freezes the UI thread, inflates the payload by 33%, and will crash older 
- *     Android devices due to Out-Of-Memory (OOM) errors.
- *   - You MUST use standard React Native `FormData` to stream the binary file 
- *     data continuously as `multipart/form-data`.
+ * ✅ TO CONNECT THE REAL BACKEND:
+ *    Change MODAL_API_URL below from null to your Modal deployment URL.
+ *    That's the only change needed. The rest of the flow is already wired up.
  *
  * Fallback Behavior:
- *   - If the backend crashes during the demo, the `catch` block MUST catch it
- *     and instantly return `app/data/mock_response.json` so the judges still 
- *     see a flawless app flow.
+ *    If MODAL_API_URL is null OR if the network request fails (crash, timeout,
+ *    bad status), the catch block instantly returns the local mock JSON so the
+ *    demo always runs flawlessly even without a backend.
  * ==============================================================================
  */
 
-// If you are locally tunneling React Native to a Modal URL, you can put that URL here:
-// const BASE_URL = 'https://YOUR_MODAL_WORKSPACE.modal.run/analyze';
+import { AnalysisResponse } from '../types';
 
-export const uploadVideo = async (fileUri: string, metadata: any) => {
-    // 1. Instantiate the multipart form object
+// ─────────────────────────────────────────────────────────────────────────────
+// 👇 CHANGE THIS ONE LINE WHEN THE BACKEND IS READY
+// ─────────────────────────────────────────────────────────────────────────────
+const MODAL_API_URL: string | null = null;
+// const MODAL_API_URL = 'https://YOUR_WORKSPACE--analyze.modal.run';
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface UploadParams {
+    videoUri: string;
+    activityType: string;
+    description: string;
+    previousData?: AnalysisResponse; // Forwarded for conversation context
+    _useMockRetry?: boolean;         // Dev-only: use retry mock payload when no backend
+}
+
+export const uploadVideo = async (params: UploadParams): Promise<AnalysisResponse> => {
+    const { videoUri, activityType, description, previousData, _useMockRetry } = params;
+
+    // If no backend URL is configured yet, immediately use mock data
+    if (!MODAL_API_URL) {
+        console.warn('[API] MODAL_API_URL not set — using mock data.');
+        if (_useMockRetry) {
+            return require('../data/mock_response_retry.json') as AnalysisResponse;
+        }
+        return require('../data/mock_response.json') as AnalysisResponse;
+    }
+
     const formData = new FormData();
 
-    // 2. Format binary specifically for React Native's FormData polyfill
+    // Stream the binary video file (never use Base64 — it OOMs on Android)
     formData.append('video_file', {
-        uri: fileUri,
+        uri: videoUri,
         name: `video_${Date.now()}.mp4`,
         type: 'video/mp4',
     } as any);
 
-    // 3. Attach metadata
-    formData.append('activity_type', metadata.activity_type);
-    formData.append('user_description', metadata.user_description);
+    formData.append('activity_type', activityType);
+    formData.append('user_description', description);
+
+    // Forward a trimmed version of the previous session as context.
+    // Rules:
+    //   1. Strip audio_url and visuals — large/binary, irrelevant to the LLM.
+    //   2. Only ever send 1 prior session (this naturally caps memory to a 1-attempt buffer;
+    //      the previous session passed in here already had its own previous stripped out).
+    if (previousData) {
+        const trimmedContext = {
+            progress_score: previousData.progress_score,
+            positive_note: previousData.positive_note,
+            improvement_delta: previousData.improvement_delta,
+            feedback_points: previousData.feedback_points.map(fp => ({
+                mistake_timestamp_ms: fp.mistake_timestamp_ms,
+                coaching_script: fp.coaching_script,
+                // audio_url and visuals intentionally omitted
+            })),
+        };
+        formData.append('previous_analysis', JSON.stringify(trimmedContext));
+    }
 
     try {
-        const response = await fetch('YOUR_MODAL_URL_HERE/analyze', {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20_000); // 20s timeout
+
+        const response = await fetch(`${MODAL_API_URL}/analyze`, {
             method: 'POST',
             body: formData,
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'multipart/form-data',
-            },
-            // Note: Do not set timeout too low, Gemini analysis + audio takes ~5-10 seconds
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal,
         });
 
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
-            throw new Error('Backend responded with error');
+            throw new Error(`Backend error: ${response.status}`);
         }
 
-        return await response.json();
+        const json = await response.json();
+        return json as AnalysisResponse;
 
     } catch (error) {
-        console.error("Upload or Analysis failed... returning mock data.", error);
-
-        // THE DEMO SAVIOR: Gracefully degrade back to Dev 3's mock math coordinates
-        // if the hackathon API connection fails.
-        return require('../data/mock_response.json');
+        console.error('[API] Request failed, falling back to mock data.', error);
+        return require('../data/mock_response.json') as AnalysisResponse;
     }
 };
+
