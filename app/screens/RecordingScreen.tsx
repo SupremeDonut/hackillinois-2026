@@ -35,7 +35,7 @@ export default function RecordingScreen({ navigation }: any) {
         console.log("Started recording...");
     };
 
-  # Callback when recording completes.Takes the raw file string.
+    // Callback when recording completes. Takes the raw file string.
     const handleUpload = async (fileUri: string) => {
         // 1. Gather context
         const metadata = {
@@ -57,6 +57,11 @@ export default function RecordingScreen({ navigation }: any) {
             <Text style={styles.subtext}>(CameraView goes here)</Text>
 
             <Button title="Record (5s)" onPress={startRecording} />
+            {/* Dev 3: Test SVGOverlay without uploading — navigates to Playback with mock visuals. */}
+            <Button
+                title="Test overlay (mock data)"
+                onPress={() => navigation.navigate('Playback', {})}
+            />
         </View>
     );
 }
