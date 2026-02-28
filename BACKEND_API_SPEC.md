@@ -25,7 +25,32 @@ Content-Type: multipart/form-data
 | `video_file` | Binary file (`.mp4`) | ✅ | The recorded video. Sent as raw binary stream — do NOT expect Base64. |
 | `activity_type` | String | ✅ | What the user is practicing, e.g. `"Basketball Shot"`, `"Badminton Smash"` |
 | `user_description` | String | ✅ | Supplementary free-text context from the user |
-| `previous_analysis` | JSON string | ❌ | The full JSON response from the previous session (if "Try Again" was tapped). Use this to provide progressive, context-aware coaching. |
+| `previous_analysis` | JSON string | ❌ | Trimmed context from the immediately prior session (if "Try Again" was tapped). Always at most 1 session. See **Session Memory** below. |
+
+---
+
+## Session Memory
+
+The frontend implements a **1-attempt rolling buffer**. Only the immediately preceding session is ever forwarded — the model has no access to anything older.
+
+`previous_analysis` is a trimmed JSON object (audio and visual data are stripped):
+
+```json
+{
+  "progress_score": 85,
+  "positive_note": "Your footwork looks really solid today.",
+  "improvement_delta": null,
+  "feedback_points": [
+    { "mistake_timestamp_ms": 1500, "coaching_script": "Your elbow dropped a bit early here." }
+  ]
+}
+```
+
+Use this to:
+
+- Reference what was already corrected ("Last time we noted your elbow — let's look at your wrist now")
+- Generate an accurate `improvement_delta` by comparing the new `progress_score` with the prior one
+- Avoid repeating the same feedback if the user has already improved on that point
 
 ---
 

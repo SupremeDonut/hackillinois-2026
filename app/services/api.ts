@@ -56,9 +56,23 @@ export const uploadVideo = async (params: UploadParams): Promise<AnalysisRespons
     formData.append('activity_type', activityType);
     formData.append('user_description', description);
 
-    // Optional: pass the prior session's analysis so the LLM can reference it
+    // Forward a trimmed version of the previous session as context.
+    // Rules:
+    //   1. Strip audio_url and visuals — large/binary, irrelevant to the LLM.
+    //   2. Only ever send 1 prior session (this naturally caps memory to a 1-attempt buffer;
+    //      the previous session passed in here already had its own previous stripped out).
     if (previousData) {
-        formData.append('previous_analysis', JSON.stringify(previousData));
+        const trimmedContext = {
+            progress_score: previousData.progress_score,
+            positive_note: previousData.positive_note,
+            improvement_delta: previousData.improvement_delta,
+            feedback_points: previousData.feedback_points.map(fp => ({
+                mistake_timestamp_ms: fp.mistake_timestamp_ms,
+                coaching_script: fp.coaching_script,
+                // audio_url and visuals intentionally omitted
+            })),
+        };
+        formData.append('previous_analysis', JSON.stringify(trimmedContext));
     }
 
     try {
