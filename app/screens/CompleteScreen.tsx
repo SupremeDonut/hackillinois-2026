@@ -11,7 +11,7 @@ type CompleteRouteProp = RouteProp<RootStackParamList, 'Complete'>;
 export default function CompleteScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<CompleteRouteProp>();
-    const { data } = route.params;
+    const { data, activityType } = route.params;
 
     return (
         <View style={globalStyles.fullScreen}>
@@ -22,9 +22,16 @@ export default function CompleteScreen() {
 
                 <TouchableOpacity
                     style={globalStyles.primaryButton}
-                    onPress={() => navigation.navigate('Recording')}
+                    onPress={() => navigation.navigate('Recording', { activityType, previousData: data })}
                 >
                     <Text style={globalStyles.buttonText}>Try Again</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[globalStyles.primaryButton, { backgroundColor: '#333', marginTop: 10 }]}
+                    onPress={() => navigation.navigate('Home')}
+                >
+                    <Text style={globalStyles.buttonText}>New Session</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity

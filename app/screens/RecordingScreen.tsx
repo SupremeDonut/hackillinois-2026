@@ -1,15 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, ActivityType } from '../types';
 import { globalStyles, Colors } from '../styles/theme';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Recording'>;
+type RecordingRouteProp = RouteProp<RootStackParamList, 'Recording'>;
 
 export default function RecordingScreen() {
     const navigation = useNavigation<NavigationProp>();
+    const route = useRoute<RecordingRouteProp>();
+    const { activityType, previousData } = route.params;
 
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -18,7 +21,6 @@ export default function RecordingScreen() {
     const [isReady, setIsReady] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
 
-    const [activityType, setActivityType] = useState<ActivityType>('basketball_shot');
     const [description, setDescription] = useState('My default description for Stage 2');
     const [countdown, setCountdown] = useState(5);
 
@@ -67,6 +69,7 @@ export default function RecordingScreen() {
                     videoUri: video.uri,
                     activityType,
                     description,
+                    previousData
                 });
             }
         } catch (error) {

@@ -14,7 +14,7 @@ type AnalyzingRouteProp = RouteProp<RootStackParamList, 'Analyzing'>;
 export default function AnalyzingScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<AnalyzingRouteProp>();
-    const { videoUri } = route.params;
+    const { videoUri, activityType } = route.params;
 
     useEffect(() => {
         // Stage 3 & Stage 1 mock: Simulate API delay then move to Playback
@@ -25,6 +25,7 @@ export default function AnalyzingScreen() {
             navigation.replace('Playback', {
                 videoUri,
                 data: typedMockData,
+                activityType,
             });
         }, 2000);
 
