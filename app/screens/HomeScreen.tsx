@@ -1,117 +1,224 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+    View, Text, TouchableOpacity, StyleSheet, TextInput,
+    KeyboardAvoidingView, Platform, ScrollView,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, ActivityType } from '../types';
-import { globalStyles, Colors } from '../styles/theme';
+import { RootStackParamList } from '../types';
+import { Colors, Spacing, Radius } from '../styles/theme';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
+
+const ACTIVITIES = [
+    'Basketball Shot',
+    'Golf Swing',
+    'Badminton Smash',
+    'Tennis Serve',
+    'Guitar Chord',
+    'Dance Move',
+];
 
 export default function HomeScreen() {
     const navigation = useNavigation<NavigationProp>();
     const [activityType, setActivityType] = useState('');
-
     const isReady = activityType.trim().length > 0;
 
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={globalStyles.fullScreen}
+            style={{ flex: 1, backgroundColor: Colors.background }}
         >
-            <View style={globalStyles.centerContent}>
-                <Text style={globalStyles.heading}>MotionCoach AI</Text>
-                <Text style={globalStyles.subHeading}>AI coaching for your physical hobbies.</Text>
+            <ScrollView
+                contentContainerStyle={S.scroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
+                {/* ── Brand ── */}
+                <View style={S.brand}>
+                    <View style={S.logoMark}>
+                        <View style={S.logoInner} />
+                    </View>
+                    <Text style={S.appName}>MotionCoach</Text>
+                    <Text style={S.tagline}>Coaching for every hobby.</Text>
+                </View>
 
-                <View style={S.formContainer}>
+                {/* ── Input Card ── */}
+                <View style={S.card}>
                     <Text style={S.inputLabel}>What are you practicing?</Text>
-
                     <TextInput
-                        style={S.activityInput}
+                        style={S.input}
                         value={activityType}
                         onChangeText={setActivityType}
-                        placeholder="type here or select below"
-                        placeholderTextColor={Colors.textSecondary}
+                        placeholder="e.g. basketball free throw"
+                        placeholderTextColor={Colors.textMuted}
+                        returnKeyType="done"
                     />
-
-                    <View style={S.suggestionsContainer}>
-                        {['Basketball Shot', 'Badminton Smash', 'Guitar G Chord'].map((item) => (
-                            <TouchableOpacity
-                                key={item}
-                                style={[S.suggestionChip, activityType === item && S.suggestionChipActive]}
-                                onPress={() => setActivityType(item)}
-                            >
-                                <Text style={[S.suggestionText, activityType === item && S.suggestionTextActive]}>
-                                    {item}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
+                    <View style={S.chips}>
+                        {ACTIVITIES.map((label) => {
+                            const active = activityType === label;
+                            return (
+                                <TouchableOpacity
+                                    key={label}
+                                    style={[S.chip, active && S.chipActive]}
+                                    onPress={() => setActivityType(label)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[S.chipLabel, active && S.chipLabelActive]}>
+                                        {label}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
                     </View>
                 </View>
 
+                {/* ── CTA ── */}
                 <TouchableOpacity
-                    style={[globalStyles.primaryButton, !isReady && S.disabledButton]}
+                    style={[S.cta, !isReady && S.ctaDisabled]}
                     onPress={() => isReady && navigation.navigate('Recording', { activityType })}
                     disabled={!isReady}
+                    activeOpacity={0.85}
                 >
-                    <Text style={globalStyles.buttonText}>Start Recording</Text>
+                    <Text style={[S.ctaText, !isReady && S.ctaTextDisabled]}>
+                        Start Recording
+                    </Text>
                 </TouchableOpacity>
-            </View>
+
+                <Text style={S.hint}>Max 5 seconds of footage</Text>
+            </ScrollView>
         </KeyboardAvoidingView>
     );
 }
 
 const S = StyleSheet.create({
-    formContainer: {
-        width: '100%',
-        marginVertical: 40,
+    scroll: {
+        flexGrow: 1,
+        paddingHorizontal: Spacing.lg,
+        paddingTop: 80,
+        paddingBottom: 48,
+        backgroundColor: Colors.background,
+    },
+    brand: {
+        alignItems: 'center',
+        marginBottom: 48,
+    },
+    logoMark: {
+        width: 52,
+        height: 52,
+        borderRadius: 16,
+        backgroundColor: Colors.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 14,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 16,
+        elevation: 10,
+    },
+    logoInner: {
+        width: 22,
+        height: 22,
+        borderRadius: 4,
+        backgroundColor: Colors.background,
+        opacity: 0.85,
+    },
+    appName: {
+        fontSize: 30,
+        fontWeight: '800',
+        color: Colors.text,
+        letterSpacing: -0.8,
+        marginBottom: 4,
+    },
+    tagline: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+    },
+    card: {
+        backgroundColor: Colors.surface,
+        borderRadius: Radius.lg,
+        padding: Spacing.lg,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+        marginBottom: Spacing.lg,
     },
     inputLabel: {
+        fontSize: 11,
+        fontWeight: '700',
         color: Colors.textSecondary,
-        fontSize: 14,
-        alignSelf: 'flex-start',
-        marginBottom: 8,
-        fontWeight: 'bold',
-        textTransform: 'uppercase'
+        textTransform: 'uppercase',
+        letterSpacing: 1.2,
+        marginBottom: Spacing.sm,
     },
-    activityInput: {
-        width: '100%',
-        backgroundColor: Colors.surface,
+    input: {
+        backgroundColor: Colors.backgroundAlt,
         color: Colors.text,
-        padding: 16,
-        borderRadius: 12,
-        fontSize: 16,
+        fontSize: 15,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 13,
+        borderRadius: Radius.md,
         borderWidth: 1,
-        borderColor: '#333',
-        marginBottom: 16
+        borderColor: Colors.glassBorder,
+        marginBottom: Spacing.md,
     },
-    suggestionsContainer: {
+    chips: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: 8,
-        width: '100%',
     },
-    suggestionChip: {
-        backgroundColor: Colors.surface,
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderRadius: 20,
+    chip: {
+        paddingHorizontal: 13,
+        paddingVertical: 7,
+        borderRadius: Radius.full,
         borderWidth: 1,
-        borderColor: '#333'
+        borderColor: Colors.glassBorder,
+        backgroundColor: Colors.backgroundAlt,
     },
-    suggestionChipActive: {
-        backgroundColor: 'rgba(76, 175, 80, 0.2)', // Light primary
-        borderColor: Colors.primary
+    chipActive: {
+        backgroundColor: Colors.primaryDim,
+        borderColor: Colors.primaryBorder,
     },
-    suggestionText: {
+    chipLabel: {
         color: Colors.textSecondary,
-        fontSize: 14
+        fontSize: 13,
+        fontWeight: '500',
     },
-    suggestionTextActive: {
+    chipLabelActive: {
         color: Colors.primary,
-        fontWeight: 'bold'
+        fontWeight: '700',
     },
-    disabledButton: {
-        backgroundColor: '#333',
-        opacity: 0.5
-    }
+    cta: {
+        backgroundColor: Colors.primary,
+        borderRadius: Radius.lg,
+        paddingVertical: 18,
+        alignItems: 'center',
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 14,
+        elevation: 10,
+    },
+    ctaDisabled: {
+        backgroundColor: Colors.surface,
+        shadowOpacity: 0,
+        elevation: 0,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    ctaText: {
+        color: Colors.background,
+        fontSize: 16,
+        fontWeight: '700',
+        letterSpacing: 0.2,
+    },
+    ctaTextDisabled: {
+        color: Colors.textMuted,
+    },
+    hint: {
+        color: Colors.textMuted,
+        fontSize: 12,
+        textAlign: 'center',
+        marginTop: Spacing.md,
+    },
 });

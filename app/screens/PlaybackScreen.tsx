@@ -160,15 +160,15 @@ export default function PlaybackScreen() {
                         {/* STEP 1: The Text Box Prompt */}
                         {!showingFrame && (
                             <View style={S.overlayBox}>
-                                <Text style={S.coachingHeader}>Coach says:</Text>
+                                <Text style={S.coachingHeader}>Coach Says</Text>
                                 <Text style={S.coachingText}>{currentFeedback.coaching_script}</Text>
                                 <Text style={S.timestampText}>Paused at {currentFeedback.mistake_timestamp_ms}ms</Text>
 
                                 <TouchableOpacity
-                                    style={[globalStyles.primaryButton, { marginTop: 20 }]}
+                                    style={S.showFrameBtn}
                                     onPress={handleShowFrame}
                                 >
-                                    <Text style={globalStyles.buttonText}>Show Corrected Frame</Text>
+                                    <Text style={S.showFrameBtnText}>Show Corrected Frame  →</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
@@ -183,11 +183,11 @@ export default function PlaybackScreen() {
                                 />
 
                                 <TouchableOpacity
-                                    style={[globalStyles.primaryButton, S.floatingContinueButton]}
+                                    style={S.continueBtn}
                                     onPress={handleContinue}
                                 >
-                                    <Text style={globalStyles.buttonText}>
-                                        {currentFeedbackIndex < (data.feedback_points?.length || 0) - 1 ? 'Next' : 'Continue'}
+                                    <Text style={S.continueBtnText}>
+                                        {currentFeedbackIndex < (data.feedback_points?.length || 0) - 1 ? 'Next  →' : 'Continue  →'}
                                     </Text>
                                 </TouchableOpacity>
                             </View>
@@ -197,18 +197,21 @@ export default function PlaybackScreen() {
                 )}
             </View>
 
-            <View style={S.bottomControls}>
-                <Text style={globalStyles.subHeading}>Playback Engine Running</Text>
-
-                {isVideoFinished && (
-                    <TouchableOpacity
-                        style={globalStyles.primaryButton}
-                        onPress={finishSession}
-                    >
-                        <Text style={globalStyles.buttonText}>View Session Results</Text>
-                    </TouchableOpacity>
-                )}
-            </View>
+            {/* Only show bottom bar when NOT paused for feedback, so it never covers the Next button */}
+            {!isPausedForFeedback && (
+                <View style={S.bottomControls}>
+                    {!isVideoFinished ? (
+                        <Text style={S.playbackStatus}>▶ Watching your form…</Text>
+                    ) : (
+                        <TouchableOpacity
+                            style={S.finishBtn}
+                            onPress={finishSession}
+                        >
+                            <Text style={S.finishBtnText}>View Results  →</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
 
         </View>
     );
@@ -216,8 +219,7 @@ export default function PlaybackScreen() {
 
 const S = StyleSheet.create({
     videoContainer: {
-        width: '100%',
-        aspectRatio: 9 / 16,
+        flex: 1,                    // Fill all available screen space
         backgroundColor: '#000',
         overflow: 'hidden',
     },
@@ -239,23 +241,25 @@ const S = StyleSheet.create({
     },
     overlayBox: {
         backgroundColor: Colors.surface,
-        padding: 24,
-        borderRadius: 16,
+        padding: 22,
+        borderRadius: 20,
         width: '100%',
-        borderWidth: 2,
-        borderColor: Colors.primary,
+        borderWidth: 1,
+        borderColor: Colors.primaryBorder,
     },
     coachingHeader: {
         color: Colors.primary,
-        fontSize: 16,
-        fontWeight: 'bold',
+        fontSize: 10,
+        fontWeight: '700',
         marginBottom: 8,
         textTransform: 'uppercase',
+        letterSpacing: 1.5,
     },
     coachingText: {
         color: Colors.text,
-        fontSize: 20,
-        lineHeight: 28,
+        fontSize: 17,
+        lineHeight: 26,
+        fontWeight: '500',
     },
     timestampText: {
         color: Colors.textSecondary,
@@ -267,18 +271,67 @@ const S = StyleSheet.create({
         justifyContent: 'flex-end',
         padding: 24,
     },
-    floatingContinueButton: {
+    showFrameBtn: {
+        marginTop: 18,
         backgroundColor: Colors.primary,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 8,
+        paddingVertical: 14,
+        borderRadius: 16,
+        alignItems: 'center',
+    },
+    showFrameBtnText: {
+        color: Colors.background,
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    continueBtn: {
+        backgroundColor: Colors.primary,
+        paddingVertical: 16,
+        paddingHorizontal: 40,
+        borderRadius: 16,
+        alignItems: 'center',
+        marginBottom: 60,   // clear the home indicator
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 10,
+    },
+    continueBtnText: {
+        color: Colors.background,
+        fontSize: 16,
+        fontWeight: '800',
     },
     bottomControls: {
-        flex: 1,
-        justifyContent: 'center',
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingVertical: 20,
+        paddingBottom: 56,
         alignItems: 'center',
-        padding: 24,
-    }
+        backgroundColor: 'rgba(10,10,15,0.65)',
+    },
+    playbackStatus: {
+        color: Colors.textSecondary,
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    finishBtn: {
+        backgroundColor: Colors.primary,
+        paddingVertical: 15,
+        paddingHorizontal: 48,
+        borderRadius: 16,
+        alignItems: 'center',
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 14,
+        elevation: 10,
+    },
+    finishBtnText: {
+        color: Colors.background,
+        fontSize: 17,
+        fontWeight: '800',
+        letterSpacing: 0.2,
+    },
 });

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, ActivityType } from '../types';
+import { RootStackParamList } from '../types';
 import { globalStyles, Colors } from '../styles/theme';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Recording'>;
@@ -21,9 +21,8 @@ export default function RecordingScreen() {
     const [isReady, setIsReady] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [facing, setFacing] = useState<'front' | 'back'>('back');
-
-    const [description, setDescription] = useState('My default description for Stage 2');
     const [countdown, setCountdown] = useState(5);
+    const description = 'My default description for Stage 2';
 
     useEffect(() => {
         let timer: NodeJS.Timeout;
@@ -35,9 +34,7 @@ export default function RecordingScreen() {
         return () => clearTimeout(timer);
     }, [isRecording, countdown]);
 
-    if (!cameraPermission || !micPermission) {
-        return <View />; // Loading permissions
-    }
+    if (!cameraPermission || !micPermission) return <View />;
 
     if (!cameraPermission.granted || !micPermission.granted) {
         return (
@@ -56,25 +53,15 @@ export default function RecordingScreen() {
 
     const startRecording = async () => {
         if (!cameraRef.current || !isReady) return;
-
         setIsRecording(true);
         setCountdown(5);
-
         try {
             const video = await cameraRef.current.recordAsync({ maxDuration: 5 });
-
-            console.log('Video saved locally to:', video?.uri);
-
             if (video?.uri) {
-                navigation.replace('Analyzing', {
-                    videoUri: video.uri,
-                    activityType,
-                    description,
-                    previousData
-                });
+                navigation.replace('Analyzing', { videoUri: video.uri, activityType, description, previousData });
             }
         } catch (error) {
-            console.error("Recording failed:", error);
+            console.error('Recording failed:', error);
         } finally {
             setIsRecording(false);
         }
@@ -88,113 +75,152 @@ export default function RecordingScreen() {
     };
 
     return (
-        <View style={globalStyles.fullScreen}>
+        <View style={S.screen}>
+            {/* Camera fills entire screen */}
+            <CameraView
+                ref={cameraRef}
+                style={StyleSheet.absoluteFill}
+                facing={facing}
+                mode="video"
+                onCameraReady={() => setIsReady(true)}
+            />
 
-            {/* 16:9 Aspect Ratio Camera Container */}
-            <View style={S.cameraContainer}>
-                <CameraView
-                    ref={cameraRef}
-                    style={S.camera}
-                    facing={facing}
-                    mode="video"
-                    onCameraReady={() => setIsReady(true)}
-                />
+            {/* Red border + countdown during recording */}
+            {isRecording && (
+                <View style={S.recordingRing} pointerEvents="none">
+                    <Text style={S.countdownText}>{countdown}</Text>
+                    <Text style={S.warningText}>Keep the phone still!</Text>
+                </View>
+            )}
 
-                {/* Flip button — hidden while recording */}
-                {!isRecording && (
-                    <TouchableOpacity
-                        style={S.flipButton}
-                        onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}
-                    >
-                        <Text style={S.flipButtonText}>↺ Flip</Text>
-                    </TouchableOpacity>
-                )}
-
-                {/* Overlay positioned absolutely over the CameraView */}
-                {isRecording && (
-                    <View style={S.recordingOverlay} pointerEvents="none">
-                        <Text style={S.countdownText}>{countdown}s</Text>
-                        <Text style={S.warningText}>Keep the phone absolutely still!</Text>
-                    </View>
-                )}
+            {/* Top badge */}
+            <View style={S.topBar}>
+                <Text style={S.activityBadge}>{activityType}</Text>
             </View>
 
-            {/* Controls Container */}
-            <View style={S.controlsContainer}>
-                <Text style={globalStyles.subHeading}>Activity: {activityType}</Text>
+            {/* Bottom controls bar */}
+            <View style={S.bottomBar}>
+                {!isRecording ? (
+                    <TouchableOpacity
+                        style={S.flipBtn}
+                        onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}
+                    >
+                        <Text style={S.flipBtnText}>↺ Flip</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <View style={S.placeholder} />
+                )}
 
                 <TouchableOpacity
-                    style={[globalStyles.primaryButton, isRecording && S.stopButton]}
+                    style={[S.recordBtn, isRecording && S.recordBtnActive]}
                     onPress={isRecording ? stopRecording : startRecording}
                     disabled={!isReady}
                 >
-                    <Text style={globalStyles.buttonText}>
-                        {!isReady ? 'Loading Camera...' : (isRecording ? 'Stop' : 'Start Recording')}
-                    </Text>
+                    <View style={isRecording ? S.recordInnerSquare : S.recordInnerCircle} />
                 </TouchableOpacity>
-            </View>
 
+                <View style={S.placeholder} />
+            </View>
         </View>
     );
 }
 
 const S = StyleSheet.create({
-    cameraContainer: {
-        width: '100%',
-        aspectRatio: 9 / 16,
+    screen: {
+        flex: 1,
         backgroundColor: '#000',
+    },
+    topBar: {
+        position: 'absolute',
+        top: 56,
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+    },
+    activityBadge: {
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: '700',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        borderRadius: 20,
         overflow: 'hidden',
     },
-    camera: {
-        flex: 1,
+    bottomBar: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 160,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 40,
+        paddingBottom: 40,        // clears home indicator
+        backgroundColor: 'rgba(0,0,0,0.45)',
     },
-    recordingOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(255,0,0,0.1)',
+    recordBtn: {
+        width: 76,
+        height: 76,
+        borderRadius: 38,
         borderWidth: 4,
+        borderColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    recordBtnActive: {
+        borderColor: Colors.error,
+    },
+    recordInnerCircle: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: Colors.error,
+    },
+    recordInnerSquare: {
+        width: 28,
+        height: 28,
+        borderRadius: 4,
+        backgroundColor: Colors.error,
+    },
+    flipBtn: {
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 9,
+    },
+    flipBtnText: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    placeholder: {
+        width: 70,
+    },
+    recordingRing: {
+        ...StyleSheet.absoluteFillObject,
+        borderWidth: 5,
         borderColor: Colors.error,
         justifyContent: 'center',
         alignItems: 'center',
     },
     countdownText: {
-        fontSize: 72,
+        fontSize: 96,
         fontWeight: 'bold',
-        color: Colors.text,
-        textShadowColor: 'rgba(0, 0, 0, 0.75)',
-        textShadowOffset: { width: -1, height: 1 },
-        textShadowRadius: 10
+        color: '#fff',
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 12,
     },
     warningText: {
-        fontSize: 24,
+        fontSize: 20,
         fontWeight: 'bold',
         color: Colors.error,
-        marginTop: 20,
-        backgroundColor: 'rgba(0,0,0,0.7)',
+        marginTop: 12,
+        backgroundColor: 'rgba(0,0,0,0.65)',
         paddingHorizontal: 16,
-        paddingVertical: 8,
+        paddingVertical: 6,
         borderRadius: 8,
-    },
-    controlsContainer: {
-        flex: 1,
-        padding: 24,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    stopButton: {
-        backgroundColor: Colors.error,
-    },
-    flipButton: {
-        position: 'absolute',
-        top: 12,
-        right: 12,
-        backgroundColor: 'rgba(0,0,0,0.55)',
-        borderRadius: 20,
-        paddingHorizontal: 14,
-        paddingVertical: 7,
-    },
-    flipButtonText: {
-        color: Colors.text,
-        fontSize: 14,
-        fontWeight: '600',
     },
 });
