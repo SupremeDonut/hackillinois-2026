@@ -28,7 +28,7 @@ export interface AnalysisResponse {
 
 export type RootStackParamList = {
     Home: undefined;
-    Recording: { activityType: ActivityType | string; previousData?: AnalysisResponse };
+    Recording: { activityType: ActivityType | string; description?: string; previousData?: AnalysisResponse };
     Analyzing: { videoUri: string; activityType: ActivityType | string; description: string; previousData?: AnalysisResponse };
     Playback: { videoUri: string; data: AnalysisResponse; activityType: ActivityType | string };
     Complete: { data: AnalysisResponse; activityType: ActivityType | string };

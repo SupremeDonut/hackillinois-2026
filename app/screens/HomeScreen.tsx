@@ -22,6 +22,7 @@ const ACTIVITIES = [
 export default function HomeScreen() {
     const navigation = useNavigation<NavigationProp>();
     const [activityType, setActivityType] = useState('');
+    const [description, setDescription] = useState('');
     const isReady = activityType.trim().length > 0;
 
     return (
@@ -73,10 +74,28 @@ export default function HomeScreen() {
                     </View>
                 </View>
 
+                {isReady && (
+                    <View style={S.card}>
+                        <Text style={S.inputLabel}>Any specific focus? (Optional)</Text>
+                        <TextInput
+                            style={[S.input, S.textArea]}
+                            value={description}
+                            onChangeText={setDescription}
+                            placeholder={`e.g. I want to improve my ${activityType.toLowerCase() || 'form'}.`}
+                            placeholderTextColor={Colors.textMuted}
+                            multiline
+                            textAlignVertical="top"
+                        />
+                    </View>
+                )}
+
                 {/* ── CTA ── */}
                 <TouchableOpacity
                     style={[S.cta, !isReady && S.ctaDisabled]}
-                    onPress={() => isReady && navigation.navigate('Recording', { activityType })}
+                    onPress={() => isReady && navigation.navigate('Recording', {
+                        activityType,
+                        description: description.trim() || `I want to improve my ${activityType} form.`
+                    })}
                     disabled={!isReady}
                     activeOpacity={0.85}
                 >
@@ -161,6 +180,9 @@ const S = StyleSheet.create({
         borderWidth: 1,
         borderColor: Colors.glassBorder,
         marginBottom: Spacing.md,
+    },
+    textArea: {
+        height: 80,
     },
     chips: {
         flexDirection: 'row',

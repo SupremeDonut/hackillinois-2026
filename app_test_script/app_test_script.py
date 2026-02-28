@@ -15,8 +15,8 @@ def test_api(video_path: str):
                 'video_file': ('test_video.mp4', f, 'video/mp4')
             }
             data = {
-                'activity_type': 'Test Activity',
-                'user_description': 'Just checking if the model unpacking error is fixed.',
+                'activity_type': 'Badmition Swing',
+                'user_description': 'I am a beginner at badminton. I want to improve my swing.',
                 'previous_analysis': ''
             }
 

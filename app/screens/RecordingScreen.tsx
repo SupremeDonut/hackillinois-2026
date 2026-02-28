@@ -12,7 +12,7 @@ type RecordingRouteProp = RouteProp<RootStackParamList, 'Recording'>;
 export default function RecordingScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<RecordingRouteProp>();
-    const { activityType, previousData } = route.params;
+    const { activityType, previousData, description = `I want to improve my ${activityType} form.` } = route.params;
 
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -22,7 +22,6 @@ export default function RecordingScreen() {
     const [isRecording, setIsRecording] = useState(false);
     const [facing, setFacing] = useState<'front' | 'back'>('back');
     const [countdown, setCountdown] = useState(5);
-    const description = 'My default description for Stage 2';
 
     useEffect(() => {
         let timer: NodeJS.Timeout;
