@@ -7,10 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi",
     "modal",
-    "kokoro_onnx",
-    "soundfile",
     "gemini_client",
-    "misaki-fork[en]",
     "torch",
     "transformers",
     "qwen-vl-utils",
@@ -19,6 +16,7 @@ dependencies = [
     "torchvision",
     "python-multipart>=0.0.22",
     "httpx",
+    "elevenlabs"
 ]
 [tool.pyright]
 venvPath = "."      

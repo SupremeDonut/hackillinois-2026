@@ -15,11 +15,13 @@
 """
 
 import modal
-import json
 from fastapi import FastAPI, UploadFile, Form
 from typing import Annotated
+from elevenlabs.client import ElevenLabs
+import os
+import base64
 
-image = modal.Image.debian_slim().uv_pip_install("fastapi[standard]")
+image = modal.Image.debian_slim().uv_pip_install("fastapi[standard]", "elevenlabs")
 app = modal.App("motion-coach")
 web_app = FastAPI()
 
@@ -34,24 +36,28 @@ async def analyze_endpoint(
     Receives the raw .mp4 binary from the phone and starts the AI pipeline.
     """
     # Load binary directly into memory (safe since videos are capped at 5s)
-    video_bytes = await video_file.read()
-    video_analyzer = modal.Cls.from_name("biomechanics-ai", "VideoAnalyzer")()
-    analysis = await video_analyzer.analyze.remote.aio(
-        video_bytes, user_description, activity_type
-    )
-    analysis = json.loads(analysis)
-    print(analysis)
+    # video_bytes = await video_file.read()
+    # video_analyzer = modal.Cls.from_name("biomechanics-ai", "VideoAnalyzer")()
+    # analysis = await video_analyzer.analyze.remote.aio(
+    #     video_bytes, user_description, activity_type
+    # )2
+    # analysis = json.loads(analysis)
+    # print(analysis)
 
     # Generate Audio Base64
-    # tts_worker = modal.Cls.from_name("biomechanics-ai", "TextToSpeech")()
-    # audio = await tts_worker.speak.remote.aio(analysis.get("coaching_script", ""))
+    client = ElevenLabs(api_key=os.environ["ELEVEN_API_KEY"])
+    audio_gen = client.text_to_speech.convert(
+        text="test speech", voice_id="ZthjuvLPty3kTMaNKVKb"
+    )
+    audio_bytes = b"".join(list(audio_gen))
+    base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
 
     # Combine and return to React Native
     return {
         "status": "success",
-        "analysis": analysis,
+        "analysis": None,
         "visuals": {},
-        "audio": "",
+        "audio": base64_audio,
     }
 
 
