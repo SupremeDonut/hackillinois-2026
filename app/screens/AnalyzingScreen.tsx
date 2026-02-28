@@ -4,9 +4,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, AnalysisResponse } from '../types';
 import { globalStyles } from '../styles/theme';
-
-// Import our Stage 3 Mock JSON to pass to Playback
-import mockResponseData from '../data/mock_response.json';
+import { uploadVideo } from '../services/api';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Analyzing'>;
 type AnalyzingRouteProp = RouteProp<RootStackParamList, 'Analyzing'>;
@@ -14,23 +12,34 @@ type AnalyzingRouteProp = RouteProp<RootStackParamList, 'Analyzing'>;
 export default function AnalyzingScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<AnalyzingRouteProp>();
-    const { videoUri, activityType } = route.params;
+    const { videoUri, activityType, description, previousData } = route.params;
 
     useEffect(() => {
-        // Stage 3 & Stage 1 mock: Simulate API delay then move to Playback
-        // We cast mockResponseData as any first because JSON imports don't narrowly match the string enums exactly
-        const typedMockData = mockResponseData as any as AnalysisResponse;
+        let cancelled = false;
 
-        const timer = setTimeout(() => {
-            navigation.replace('Playback', {
+        const runAnalysis = async () => {
+            // Calls the API service — returns real data if MODAL_API_URL is set,
+            // or instantly falls back to mock_response.json if it's null or fails.
+            const data = await uploadVideo({
                 videoUri,
-                data: typedMockData,
                 activityType,
+                description,
+                previousData,
             });
-        }, 2000);
 
-        return () => clearTimeout(timer);
-    }, [navigation, videoUri]);
+            if (!cancelled) {
+                navigation.replace('Playback', {
+                    videoUri,
+                    data: data as AnalysisResponse,
+                    activityType,
+                });
+            }
+        };
+
+        runAnalysis();
+
+        return () => { cancelled = true; };
+    }, []);
 
     return (
         <View style={globalStyles.fullScreen}>
