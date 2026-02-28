@@ -1,0 +1,19 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "elevenlabs",
+    "fastapi",
+    "modal",
+    "kokoro_onnx",
+    "soundfile",
+    "gemini_client",
+    "misaki-fork[en]"
+]
+[tool.pyright]
+venvPath = "."      
+venv = ".venv"      
+typeCheckingMode = "basic"

@@ -21,23 +21,43 @@
 #   4. Return THAT public URL as `audio_url` back to React Native.
 # ==============================================================================
 """
-import os
+# import os
 
+# def generate_audio_url(text: str) -> str:
+#     """
+#     Calls ElevenLabs TTS and saves the audio to a public bucket.
 
-def generate_audio_url(text: str) -> str:
-    """
-    Calls ElevenLabs TTS and saves the audio to a public bucket.
+#     Args:
+#         text (str): The coaching script produced by Gemini.
 
-    Args:
-        text (str): The coaching script produced by Gemini.
+#     Returns:
+#         str: A temporary, publicly accessible URL pointing to the MP3.
+#     """
+#     # 1. Initialize ElevenLabs client
+#     # 2. Call Text-to-Speech API
+#     # 3. Save resulting MP3 bytes to a temporary public bucket
+#     # 4. Return the public URL for React Native to stream
 
-    Returns:
-        str: A temporary, publicly accessible URL pointing to the MP3.
-    """
-    # 1. Initialize ElevenLabs client
-    # 2. Call Text-to-Speech API
-    # 3. Save resulting MP3 bytes to a temporary public bucket
-    # 4. Return the public URL for React Native to stream
+#     # Mock return so the app doesn't crash before this is built
+#     return "https://example.com/mock-audio.mp3"
+from kokoro_onnx import Kokoro
+import io
+import soundfile as sf
 
-    # Mock return so the app doesn't crash before this is built
-    return "https://example.com/mock-audio.mp3"
+app = FastAPI()
+
+# Load model once on startup
+# Download 'kokoro-v0.19.onnx' and 'voices.json' from HuggingFace
+kokoro = Kokoro("kokoro-v0.19.onnx", "voices.json")
+
+@app.get("/tts/local")
+async def generate_local_tts(text: str, voice: str = "af_heart"):
+    # Generate audio samples (numpy array)
+    samples, sample_rate = kokoro.create(text, voice=voice, speed=1.0)
+    
+    # Convert numpy array to MP3/WAV bytes in memory
+    buffer = io.BytesIO()
+    sf.write(buffer, samples, sample_rate, format='WAV')
+    buffer.seek(0)
+
+    return StreamingResponse(buffer, media_type="audio/wav")
