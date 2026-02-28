@@ -375,6 +375,7 @@ video_image = (
         "git+https://github.com/huggingface/transformers.git",
         "accelerate",
         "qwen-vl-utils",
+        "outlines",
         "pydantic",
         "decord",
         "torchvision",
@@ -386,16 +387,6 @@ video_image = (
     .run_function(
         download_model_weights,
         secrets=[modal.Secret.from_name("huggingface-secret")],
-    )
-)
-tts_image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .apt_install("curl")
-    .pip_install("kokoro_onnx", "soundfile", "misaki[en]", "numpy")
-    # Pre-download weights so they are baked into the image
-    .run_commands(
-        "curl -L https://github.com/remsky/Kokoro-FastAPI/raw/main/model/kokoro-v1.0.onnx -o /root/kokoro-v1.0.onnx",
-        "curl -L https://github.com/remsky/Kokoro-FastAPI/raw/main/model/voices-v1.0.bin -o /root/voices-v1.0.bin",
     )
 )
 
@@ -462,10 +453,6 @@ class VideoAnalyzer:
         )
         self.processor = AutoProcessor.from_pretrained(MODEL_CACHE_DIR)
 
-        # Wrap with outlines for constrained (structured) generation
-        self.outlines_model = outlines.from_transformers(self.raw_model, self.processor)
-        self.generator = outlines.Generator(self.outlines_model, BiomechanicalAnalysis)
-
     @modal.method()
     def analyze(
         self,
@@ -505,7 +492,7 @@ class VideoAnalyzer:
             "Analyze the user's body mechanics, posture, and movement pattern for this activity.",
         )
 
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
             tmp.write(video_bytes)
             tmp.flush()
 

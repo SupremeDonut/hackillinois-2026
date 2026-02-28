@@ -36,18 +36,16 @@ async def analyze_endpoint(
     Receives the raw .mp4 binary from the phone and starts the AI pipeline.
     """
     # Load binary directly into memory (safe since videos are capped at 5s)
-    # video_bytes = await video_file.read()
-    # video_analyzer = modal.Cls.from_name("biomechanics-ai", "VideoAnalyzer")()
-    # analysis = await video_analyzer.analyze.remote.aio(
-    #     video_bytes, user_description, activity_type
-    # )2
-    # analysis = json.loads(analysis)
-    # print(analysis)
+    video_bytes = await video_file.read()
+    video_analyzer = modal.Cls.from_name("biomechanics-ai", "VideoAnalyzer")()
+    analysis = await video_analyzer.analyze.remote.aio(
+        video_bytes, user_description, activity_type
+    )
 
     # Generate Audio Base64
     client = ElevenLabs(api_key=os.environ["ELEVEN_API_KEY"])
     audio_gen = client.text_to_speech.convert(
-        text="test speech", voice_id="ZthjuvLPty3kTMaNKVKb"
+        text=analysis["coaching_script"], voice_id="ZthjuvLPty3kTMaNKVKb"
     )
     audio_bytes = b"".join(list(audio_gen))
     base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
@@ -55,7 +53,7 @@ async def analyze_endpoint(
     # Combine and return to React Native
     return {
         "status": "success",
-        "analysis": None,
+        "analysis": analysis,
         "visuals": {},
         "audio": base64_audio,
     }
