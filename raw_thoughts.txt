@@ -1,0 +1,102 @@
+Upload video -> progress evaluation and steps 
+						|
+						Goals -> upload video for goals -> AI 
+
+Pitch Idea:
+AI has revolutionized learning, but mainly has focused on academic fields, text-focused learning, and less interactive feedback
+AI has also focused more on helping people learn in school/work, things people don’t necessarily want to do
+Our idea is to make an app that helps people learn physical things, hobbies, like playing an instrument or a sport. You take a video of the action you want to improve, and the AI will return with customized feedback as well as an annotated video that points out specific places you can improve.
+
+Additional Ideas:
+Add a goals tab where people can define what they want to learn / level they want to learn
+AI is also very encouraging, promotes a low-stress environment, while helping rate how close you are to the goal
+
+
+Take 30 second max video of the desired action -> user describes what they are trying to do -> AI responds with an interactive guide that includes interactive images and overlays on still images from the videos, gifs of the action with correct “shadow” human overlaid on their actions to give clear feedback -> User takes new video of same action, context is preserved somehow -> could also output a video with corrected action overlaid which is narrated by eleven labs voice, so it becomes personalized explainer video	
+
+General Technical Thoughts:
+Must use Modal
+Must use Gemini API
+React Native App (Test on Android)
+
+General AI pipeline Thoughts:
+Pose Skeleton extract coordinates to feed into llm?, have llm output coordinates which are then re overlaid on original video, how make 3d looking correctly? 
+Could use AI image/video gen, but prob harder to get exactly what we want with overlay? Prompt engineering?
+
+React Native App sends video (maybe preprocessed pose data as well?) -> Backend -> React Native App renders new information received from Backend -> reprompt user
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+This is a fantastic, highly ambitious product flow. You have the exact right intuition about the AI pipeline and the pitfalls (like AI video generation being too uncontrollable).
+However, looking at this through the lens of a 36-hour hackathon, there are a few "traps" in your thought process that could cause you to run out of time.
+Here are my thoughts on your pipeline, what to scrap, and exactly how to build the most impressive version of this before the deadline.
+
+🚨 The Hackathon Reality Checks (What to pivot)
+1. The 30-Second Video Trap
+The Problem: Passing a 30-second video to Gemini and waiting for an analysis will take 15–30 seconds of loading time. In a live hackathon demo, 30 seconds of dead silence while a spinner spins feels like an eternity. Judges will tune out.
+The Fix: Force the user to record 3 to 5 seconds max (e.g., just the golf swing, just the basketball free throw). It forces a snappy demo and ultra-fast Gemini API responses.
+2. The "Shadow Human / Rendered Video" Trap
+The Problem: Trying to use an LLM to output a corrected 3D time-series pose skeleton, then rendering a "shadow human" overlay on top of the video, and encoding it into a new MP4 file on the backend will easily take 40+ hours to build and debug.
+The Fix: The "Pause & Draw" Illusion. Instead of rendering a new video, your backend just returns a timestamp and 2D coordinates. Your React Native app plays back the user's original video, automatically pauses at the exact millisecond the mistake happens, and uses React Native Views/SVGs to draw a red line over their bad posture, and a green line showing the correct posture. It looks just as impressive, but takes 1/10th the code.
+3. The Video Gen Trap
+Your intuition was 100% correct. Do not use AI video generation (like Runway or Sora). It is not controllable enough for precise biomechanics and takes minutes to generate. Avoid it completely.
+
+🧠 The Refined AI Pipeline (The 36-Hour Winning Strategy)
+Here is exactly how you should architect your pipeline using React Native, Modal, Gemini 3.1, and ElevenLabs.
+Step 1: React Native App (The Capture)
+The user records a 5-second video using expo-camera.
+The user speaks: "I'm trying to fix my tennis serve." (Use a quick Speech-to-Text library, or just let them type it).
+The RN app sends the .mp4 and the text string to your Modal endpoint.
+Skip Pose Extraction on the phone for now. Gemini 1.5 Pro natively understands video frames remarkably well. Don't waste time getting MediaPipe working on React Native unless you finish early. Let Gemini do the heavy lifting.
+Step 2: The Modal Backend (The Heavy Lifter)
+Modal receives the video.
+Modal calls the Gemini 3.1 API.
+The Golden Prompt: "Watch this 5-second video of a user trying to [user intent]. Identify the exact moment they make a biomechanical error. Return a strict JSON object with: 1) mistake_timestamp_seconds, 2) feedback_text, 3) joint_x_percent and joint_y_percent (where the mistake is on the screen), and 4) correct_angle_degrees."
+Modal receives the JSON from Gemini.
+Modal sends the feedback_text to the ElevenLabs API to generate a highly expressive MP3 audio file.
+Modal returns the JSON + the MP3 URL (or base64 string) back to the React Native app.
+Step 3: React Native App (The Playback & "Shadow" Illusion)
+The RN app receives the data.
+It loads the original user video into an Expo <Video> player component.
+It plays the video and the ElevenLabs audio simultaneously.
+The Magic Moment: You write a listener in RN: if (currentVideoTime >= JSON.mistake_timestamp_seconds). When that triggers, the video PAUSES.
+At that exact paused frame, React Native uses the X/Y percentages from Gemini to draw a glowing interactive overlay on the screen (e.g., an arc showing the user's elbow angle is 90 degrees, and a dotted "shadow" line showing it should be 120 degrees).
+Step 4: Context Preservation (The Reprompt)
+You store the JSON conversation history in a React Context array.
+When the user takes their next 5-second video, you send the new video to Modal, along with the previous feedback_text, so Gemini knows what the user is supposed to be fixing.
+
+🛠️ How to divide the work right now
+Since you are testing on Android and building with React Native, this is highly achievable. Here is how your 3 devs should split up tonight:
+Dev 1: The Camera & Playback (Frontend)
+Set up Expo.
+Get <CameraView> working to record a 5-second .mp4.
+Get the expo-av <Video> component working to play the video back.
+Crucial Task: Figure out how to programmatically pause the <Video> player at a specific millisecond timestamp.
+Dev 2: The Modal + Gemini + ElevenLabs God (Backend)
+Set up the Modal app.
+Write the Python code to accept the video upload.
+Write the Gemini 1.5 Prompt to return the strict JSON payload containing timestamps and X/Y screen coordinates.
+Integrate the elevenlabs Python package to turn the Gemini text into voice.
+Return a massive, beautiful JSON payload to the frontend.
+Dev 3: The Overlay Artist (Frontend/Math)
+You are the bridge. You take a hardcoded JSON mock-up from Dev 2.
+When Dev 1's video pauses, you must write the React Native UI code (react-native-svg or absolute positioned <View>s) to draw the glowing lines and "shadow" angles exactly over the video player based on the JSON coordinates.
+Summary of your idea: It is an award-winning concept. By cutting the video down to 5 seconds and using the "Pause & Draw" trick instead of trying to render a completely new AI video, you save yourselves 20+ hours of work while delivering an identical (and faster!) user experience.
+
