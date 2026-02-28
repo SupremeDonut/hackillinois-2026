@@ -5,25 +5,11 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, AnalysisResponse } from '../types';
 import { globalStyles } from '../styles/theme';
 
+// Import our Stage 3 Mock JSON to pass to Playback
+import mockResponseData from '../data/mock_response.json';
+
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Analyzing'>;
 type AnalyzingRouteProp = RouteProp<RootStackParamList, 'Analyzing'>;
-
-// Dummy data for Stage 1 flow
-const mockAnalysisData: AnalysisResponse = {
-    status: 'success',
-    analysis: {
-        mistake_timestamp_ms: 2500,
-        coaching_script: 'Great shot! But try to keep your elbow tucked in.',
-        positive_note: 'Excellent follow through.',
-        progress_score: 85,
-    },
-    visuals: {
-        focus_point: { x: 0.5, y: 0.5 },
-        overlay_type: 'ANGLE_CORRECTION',
-        vectors: [],
-    },
-    audio_url: 'dummy_url'
-};
 
 export default function AnalyzingScreen() {
     const navigation = useNavigation<NavigationProp>();
@@ -31,11 +17,14 @@ export default function AnalyzingScreen() {
     const { videoUri } = route.params;
 
     useEffect(() => {
-        // Stage 1 mock: Simulate API delay then move to Playback
+        // Stage 3 & Stage 1 mock: Simulate API delay then move to Playback
+        // We cast mockResponseData as any first because JSON imports don't narrowly match the string enums exactly
+        const typedMockData = mockResponseData as any as AnalysisResponse;
+
         const timer = setTimeout(() => {
             navigation.replace('Playback', {
                 videoUri,
-                data: mockAnalysisData,
+                data: typedMockData,
             });
         }, 2000);
 

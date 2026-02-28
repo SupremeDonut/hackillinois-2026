@@ -1,36 +1,18 @@
 {
   "status": "success",
   "analysis": {
-    "mistake_timestamp_ms": 1450,
-    "coaching_script": "Great swing, but try extending your elbow a bit more on the follow-through.",
-    "positive_note": "Great swing",
-    "progress_score": 85,
-    "improvement_delta": 5,
-    "technical_stats": {
-      "observed_angle": 90,
-      "target_angle": 120
-    }
+    "mistake_timestamp_ms": 2500,
+    "coaching_script": "Great attempt! But try keeping your elbow tucked completely in right here.",
+    "positive_note": "Your stance looks very solid.",
+    "progress_score": 85
   },
   "visuals": {
     "focus_point": {
       "x": 0.5,
-      "y": 0.3
+      "y": 0.5
     },
     "overlay_type": "ANGLE_CORRECTION",
-    "vectors": [
-      {
-        "start": [0.4, 0.4],
-        "end": [0.5, 0.5],
-        "color": "red",
-        "label": "Current"
-      },
-      {
-        "start": [0.4, 0.4],
-        "end": [0.6, 0.3],
-        "color": "green",
-        "label": "Target"
-      }
-    ]
+    "vectors": []
   },
-  "audio_url": "https://example.com/mock-audio.mp3"
+  "audio_url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
 }
