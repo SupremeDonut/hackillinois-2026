@@ -1220,7 +1220,7 @@ async def analyze(request: Request):
             cap.release()
 
             # Cap effective fps for sampling at 16 to reduce YOLO calls and prompt size
-            fps = min(fps, 16.0)
+            fps = min(fps, 8.0)
 
             # Sample every 6th frame (at 16fps cap = ~2.7 samples/sec, sufficient for pose analysis)
             # Limit to first 5 seconds to keep LLM prompt manageable

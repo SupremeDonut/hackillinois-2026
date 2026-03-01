@@ -244,10 +244,13 @@ export default function CompleteScreen() {
                                                     >
                                                         {isLoading === idx ? (
                                                             <ActivityIndicator size="small" color={Colors.background} />
+                                                        ) : playingIndex === idx ? (
+                                                            <View style={S.pauseIcon}>
+                                                                <View style={S.pauseBar} />
+                                                                <View style={S.pauseBar} />
+                                                            </View>
                                                         ) : (
-                                                            <Text style={S.actionButtonText}>
-                                                                {playingIndex === idx ? '⏸' : '♪'}
-                                                            </Text>
+                                                            <Text style={S.actionButtonText}>&#9654;</Text>
                                                         )}
                                                     </TouchableOpacity>
                                                 )}
@@ -536,6 +539,18 @@ const S = StyleSheet.create({
     actionButtonText: {
         fontSize: 16,
         color: Colors.background,
+    },
+    pauseIcon: {
+        flexDirection: 'row',
+        gap: 3,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    pauseBar: {
+        width: 3,
+        height: 14,
+        borderRadius: 2,
+        backgroundColor: Colors.background,
     },
     feedbackAudioLabel: {
         fontSize: 12,

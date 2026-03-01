@@ -108,8 +108,7 @@ export default function AnalyzingScreen() {
                 description,
                 previousData,
                 voiceId,
-                _useMockRetry: !!previousData,
-            } as any);
+            });
             if (!cancelled) {
                 completeBar();
                 // Short pause so user sees 100% before navigating

@@ -31,7 +31,6 @@ export interface UploadParams {
     description: string;
     voiceId: string;
     previousData?: AnalysisResponse; // Forwarded for conversation context
-    _useMockRetry?: boolean; // Dev-only: use retry mock payload when no backend
 }
 
 export const uploadVideo = async (
@@ -43,17 +42,7 @@ export const uploadVideo = async (
         description,
         voiceId,
         previousData,
-        _useMockRetry,
     } = params;
-
-    // If no backend URL is configured yet, immediately use mock data
-    if (!MODAL_API_URL) {
-        console.warn("[API] MODAL_API_URL not set — using mock data.");
-        if (_useMockRetry) {
-            return require("../data/mock_response_retry.json") as AnalysisResponse;
-        }
-        return require("../data/mock_response.json") as AnalysisResponse;
-    }
 
     const formData = new FormData();
 
@@ -107,10 +96,7 @@ export const uploadVideo = async (
         const json = await response.json();
         return json as AnalysisResponse;
     } catch (error) {
-        console.error(
-            "[API] Request failed, falling back to mock data.",
-            error,
-        );
-        return require("../data/mock_response.json") as AnalysisResponse;
+        console.error("[API] Request failed.", error);
+        throw error;
     }
 };
