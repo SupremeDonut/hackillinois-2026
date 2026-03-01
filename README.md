@@ -1,5 +1,7 @@
 # Morphi
 
+![](logo.png)
+
 AI-powered coaching for physical activities. Record a short video of your basketball shot, golf swing, guitar strumming, or dance move, describe what you want to improve, and get real-time feedback with visual overlays and voice narration. All built on a custom Lora trained version of Qwen3.
 
 Built at [HackIllinois 2026](https://hackillinois.org).
@@ -26,7 +28,7 @@ Under the hood, this is a full-stack ML system:
 - Feedback is structured as machine-readable JSON with `ANGLE_CORRECTION` vectors tied to YOLO keypoints, enabling the app to render precise visual overlays (current joint angle vs. target) directly from model output.
 - **ElevenLabs TTS** converts the coaching text into natural voice narration for a hands-free experience.
 
-The key insight is that pose detection alone can tell you *where* joints are, but not *what's wrong* or *how to fix it*. By combining skeleton data with a fine-tuned VLM, we bridge the gap between raw pose estimation and actionable coaching.
+The key insight is that pose detection alone can tell you _where_ joints are, but not _what's wrong_ or _how to fix it_. By combining skeleton data with a fine-tuned VLM, we bridge the gap between raw pose estimation and actionable coaching.
 
 ## Demo
 
@@ -193,6 +195,7 @@ We built an automated pipeline that creates high-quality pose correction trainin
 **2. YOLO26x-pose filtering.** Every image is passed through YOLO26x-pose on GPU. We enforce strict quality gates: exactly one person detected, at least 3 visible keypoints with confidence > 0.3. Multi-person scenes, occluded athletes, and non-person images are discarded. This runs in parallel (one T4 GPU per sport category) for speed.
 
 **3. Gemini 3.0 Flash distillation.** Each filtered image, along with its YOLO keypoint coordinates, is sent to Gemini 3.0 Flash (with structured JSON output mode) to generate coaching labels. The prompt requires Gemini to produce:
+
 - A **progress score** (0-100) grading overall form quality
 - A **positive note** highlighting what the athlete does well
 - 1-5 **feedback points**, each with a coaching script and precise **ANGLE_CORRECTION** visual overlays (current vs. target vectors anchored to YOLO keypoint coordinates)
@@ -209,19 +212,19 @@ This is knowledge distillation: we use a frontier model (Gemini) as the teacher 
 
 ### Training Architecture
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| **Base model** | Qwen3-VL-32B-Instruct | Best open-source VLM at 32B scale with native image understanding |
-| **Adaptation method** | LoRA (rank 256, alpha 512) | Parameter-efficient fine-tuning -- adapts ~1% of parameters while preserving base capabilities |
-| **LoRA dropout** | 0.05 | Regularization to prevent overfitting on ~2,100 training examples |
-| **Vision encoder** | Unfrozen (ViT + aligner) | Allows the model to learn pose-specific visual features rather than relying on generic pre-trained representations |
-| **Hardware** | 8x NVIDIA H200 (141 GB VRAM each) | 1.1 TB total GPU memory enables full model loading with DDP |
-| **Distributed strategy** | PyTorch DDP via `torchrun` | Simple, reliable multi-GPU training without the complexity of DeepSpeed/FSDP |
-| **LR schedule** | Cosine (1e-4 peak, 10% warmup) | Smooth decay produces better final convergence than linear |
-| **Effective batch size** | 64 (2/device x 4 grad accum x 8 GPUs) | Large batch for stable gradient estimates |
-| **Epochs** | 10 | Small dataset needs multiple passes to converge fully |
-| **Validation** | 10% held-out split, evaluated every 25 steps | Early stopping signal to select the best checkpoint |
-| **Framework** | [MS-Swift](https://github.com/modelscope/ms-swift) | Handles Qwen3-VL's multi-modal data format natively |
+| Decision                 | Choice                                             | Rationale                                                                                                          |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Base model**           | Qwen3-VL-32B-Instruct                              | Best open-source VLM at 32B scale with native image understanding                                                  |
+| **Adaptation method**    | LoRA (rank 256, alpha 512)                         | Parameter-efficient fine-tuning -- adapts ~1% of parameters while preserving base capabilities                     |
+| **LoRA dropout**         | 0.05                                               | Regularization to prevent overfitting on ~2,100 training examples                                                  |
+| **Vision encoder**       | Unfrozen (ViT + aligner)                           | Allows the model to learn pose-specific visual features rather than relying on generic pre-trained representations |
+| **Hardware**             | 8x NVIDIA H200 (141 GB VRAM each)                  | 1.1 TB total GPU memory enables full model loading with DDP                                                        |
+| **Distributed strategy** | PyTorch DDP via `torchrun`                         | Simple, reliable multi-GPU training without the complexity of DeepSpeed/FSDP                                       |
+| **LR schedule**          | Cosine (1e-4 peak, 10% warmup)                     | Smooth decay produces better final convergence than linear                                                         |
+| **Effective batch size** | 64 (2/device x 4 grad accum x 8 GPUs)              | Large batch for stable gradient estimates                                                                          |
+| **Epochs**               | 10                                                 | Small dataset needs multiple passes to converge fully                                                              |
+| **Validation**           | 10% held-out split, evaluated every 25 steps       | Early stopping signal to select the best checkpoint                                                                |
+| **Framework**            | [MS-Swift](https://github.com/modelscope/ms-swift) | Handles Qwen3-VL's multi-modal data format natively                                                                |
 
 The LoRA adapter is automatically downloaded locally after training and can optionally be uploaded to Hugging Face Hub. See [`backend/modal_fine_tuning/README.md`](backend/modal_fine_tuning/README.md) for full setup instructions.
 
@@ -245,17 +248,16 @@ The LoRA adapter is automatically downloaded locally after training and can opti
 
 ### Stack
 
-| Layer | Technology |
-|-------|------------|
-| Client | React Native (Expo 54), TypeScript, React 19 |
-| Navigation | React Navigation 7 (native-stack) |
-| Media | expo-camera, expo-av, react-native-svg |
-| Backend | Modal (Python, serverless GPU) |
-| Pose Detection | MediaPipe / YOLO pose estimation |
-| Vision-Language Model | Qwen3-VL-32B-Instruct via `transformers` |
-| Text-to-Speech | ElevenLabs API |
-| Fine-Tuning | MS-Swift LoRA SFT on 8x H200 GPUs via Modal |
-
+| Layer                 | Technology                                   |
+| --------------------- | -------------------------------------------- |
+| Client                | React Native (Expo 54), TypeScript, React 19 |
+| Navigation            | React Navigation 7 (native-stack)            |
+| Media                 | expo-camera, expo-av, react-native-svg       |
+| Backend               | Modal (Python, serverless GPU)               |
+| Pose Detection        | MediaPipe / YOLO pose estimation             |
+| Vision-Language Model | Qwen3-VL-32B-Instruct via `transformers`     |
+| Text-to-Speech        | ElevenLabs API                               |
+| Fine-Tuning           | MS-Swift LoRA SFT on 8x H200 GPUs via Modal  |
 
 ### Project Structure
 
