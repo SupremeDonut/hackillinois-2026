@@ -36,13 +36,8 @@ export interface UploadParams {
 export const uploadVideo = async (
     params: UploadParams,
 ): Promise<AnalysisResponse> => {
-    const {
-        videoUri,
-        activityType,
-        description,
-        voiceId,
-        previousData,
-    } = params;
+    const { videoUri, activityType, description, voiceId, previousData } =
+        params;
 
     const formData = new FormData();
 
@@ -93,8 +88,9 @@ export const uploadVideo = async (
             throw new Error(`Backend error: ${response.status}`);
         }
 
-        const json = await response.json();
-        return json as AnalysisResponse;
+        const json = (await response.json()) as AnalysisResponse;
+        json.feedback_points.shift();
+        return json;
     } catch (error) {
         console.error("[API] Request failed.", error);
         throw error;
