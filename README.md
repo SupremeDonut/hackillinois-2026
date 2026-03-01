@@ -1,4 +1,4 @@
-# MotionCoach AI
+# Morphi
 
 AI-powered coaching for physical activities. Record a short video of your basketball shot, golf swing, guitar strumming, or dance move, describe what you want to improve, and get real-time feedback with visual overlays and voice narration.
 
