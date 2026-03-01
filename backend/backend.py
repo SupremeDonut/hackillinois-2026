@@ -172,11 +172,11 @@ def snap_correction_vectors_to_skeleton(
 
     # Parse coaching script to identify EXACT body part (with side)
     script_lower = coaching_script.lower()
-    
+
     # Detect side preference
     has_left = "left" in script_lower
     has_right = "right" in script_lower
-    
+
     # Map body part keywords to keypoint names (SIDE-AWARE)
     BODY_PART_KEYWORDS = {
         "shoulder": {"left": ["left_shoulder"], "right": ["right_shoulder"]},
@@ -187,10 +187,16 @@ def snap_correction_vectors_to_skeleton(
         "knee": {"left": ["left_knee"], "right": ["right_knee"]},
         "ankle": {"left": ["left_ankle"], "right": ["right_ankle"]},
         "foot": {"left": ["left_ankle"], "right": ["right_ankle"]},
-        "arm": {"left": ["left_elbow", "left_shoulder"], "right": ["right_elbow", "right_shoulder"]},
-        "leg": {"left": ["left_knee", "left_hip"], "right": ["right_knee", "right_hip"]},
+        "arm": {
+            "left": ["left_elbow", "left_shoulder"],
+            "right": ["right_elbow", "right_shoulder"],
+        },
+        "leg": {
+            "left": ["left_knee", "left_hip"],
+            "right": ["right_knee", "right_hip"],
+        },
     }
-    
+
     target_keypoints = []
     for body_part, sides in BODY_PART_KEYWORDS.items():
         if body_part in script_lower:
@@ -203,33 +209,37 @@ def snap_correction_vectors_to_skeleton(
             else:
                 # Ambiguous or both mentioned - include both sides
                 target_keypoints.extend(sides["left"] + sides["right"])
-                print(f"[Snap] Detected '{body_part}' (both sides) -> {sides['left']} + {sides['right']}")
+                print(
+                    f"[Snap] Detected '{body_part}' (both sides) -> {sides['left']} + {sides['right']}"
+                )
 
     if not target_keypoints:
-        print(f"[Snap] ⚠️  No specific body part found in script, skipping correction vectors")
+        print(
+            f"[Snap] ⚠️  No specific body part found in script, skipping correction vectors"
+        )
         return visuals
 
     # Generate correction vectors purely from detected keypoints
     snapped_vectors = []
-    
+
     for kp_name in target_keypoints:
         if kp_name not in KEYPOINTS:
             continue
-            
+
         kp_idx = KEYPOINTS[kp_name]
         kp_coords = get_keypoint_coords(xy, conf, kp_idx, width, height)
-        
+
         if not kp_coords:
             print(f"[Snap] ⚠️  Keypoint {kp_name} not detected, skipping")
             continue
-        
+
         # Find adjacent keypoint to form the limb segment
         if kp_name not in KEYPOINT_CONNECTIONS:
             continue
-            
+
         adjacent_coords = None
         adjacent_name = None
-        
+
         for adj_name in KEYPOINT_CONNECTIONS[kp_name]:
             if adj_name in KEYPOINTS:
                 adj_idx = KEYPOINTS[adj_name]
@@ -238,11 +248,11 @@ def snap_correction_vectors_to_skeleton(
                     adjacent_coords = adj_coords
                     adjacent_name = adj_name
                     break
-        
+
         if not adjacent_coords:
             print(f"[Snap] ⚠️  No adjacent keypoint for {kp_name}, skipping")
             continue
-        
+
         # Vector 1: Current limb segment (RED) - shows what IS
         snapped_vectors.append({
             "start": list(kp_coords),
@@ -258,9 +268,10 @@ def snap_correction_vectors_to_skeleton(
         curr_dx = adjacent_coords[0] - kp_coords[0]
         curr_dy = adjacent_coords[1] - kp_coords[1]
         segment_length = (curr_dx**2 + curr_dy**2) ** 0.5
-        
+
         # Rotate by 30 degrees as a visual correction hint
         import math
+
         angle = math.radians(30)
         cos_a = math.cos(angle)
         sin_a = math.sin(angle)
@@ -290,8 +301,10 @@ def snap_correction_vectors_to_skeleton(
 
     # REPLACE all LLM vectors with our precisely-generated ones
     visuals["vectors"] = snapped_vectors
-    
-    print(f"[Snap] ✅ Replaced LLM vectors with {len(snapped_vectors)} precisely anchored correction vectors")
+
+    print(
+        f"[Snap] ✅ Replaced LLM vectors with {len(snapped_vectors)} precisely anchored correction vectors"
+    )
 
     return visuals
 
@@ -334,58 +347,66 @@ temp_volume = modal.Volume.from_name("video-temp", create_if_missing=True)
 import uuid
 import time as _cache_time
 
+
 def _generate_video_id() -> str:
     """Generate unique video session ID."""
     return str(uuid.uuid4())[:12]
 
 
 @app.function(
-    image=modal.Image.debian_slim()
-    .pip_install("fastapi", "python-multipart"),
+    image=modal.Image.debian_slim().pip_install("fastapi", "python-multipart"),
     volumes={"/tmp/video-cache": temp_volume},
     timeout=600,
 )
 @modal.fastapi_endpoint(method="GET")
 async def get_video(video_id: str):
     """Stream video file from volume cache.
-    
+
     Usage: GET /something?video_id={video_id}
     """
     try:
         video_path = f"/tmp/video-cache/{video_id}.mp4"
-        
+
         import os
         import mimetypes
-        
+
         if not os.path.exists(video_path):
             print(f"[Video] Video {video_id} not found at {video_path}")
-            if os.path.exists('/tmp/video-cache'):
-                files = os.listdir('/tmp/video-cache')
+            if os.path.exists("/tmp/video-cache"):
+                files = os.listdir("/tmp/video-cache")
                 print(f"[Video] Available files ({len(files)}): {files}")
             else:
                 print(f"[Video] Cache directory does not exist")
-            return Response(content=b"Video not found", status_code=404, media_type="text/plain")
-        
+            return Response(
+                content=b"Video not found", status_code=404, media_type="text/plain"
+            )
+
         # Get file size for proper streaming
         file_size = os.path.getsize(video_path)
-        print(f"[Video] File exists at {video_path}, size: {file_size / 1024 / 1024:.2f} MB")
-        
+        print(
+            f"[Video] File exists at {video_path}, size: {file_size / 1024 / 1024:.2f} MB"
+        )
+
         # Read video from volume
         with open(video_path, "rb") as f:
             video_bytes = f.read()
-        
+
         print(f"[Video] Read {len(video_bytes) / 1024 / 1024:.2f} MB from disk")
-        
+
         if len(video_bytes) == 0:
             print(f"[Video] ERROR: File is empty!")
-            return Response(content=b"Video file is empty", status_code=500, media_type="text/plain")
-        
+            return Response(
+                content=b"Video file is empty", status_code=500, media_type="text/plain"
+            )
+
         if len(video_bytes) != file_size:
-            print(f"[Video] WARNING: Read {len(video_bytes)} bytes but file size is {file_size}")
-        
+            print(
+                f"[Video] WARNING: Read {len(video_bytes)} bytes but file size is {file_size}"
+            )
+
         # Stream with proper headers for HTTP range requests
         return Response(
-            content=video_bytes, 
+            content=video_bytes,
             media_type="video/mp4",
             headers={
                 "Content-Type": "video/mp4",
@@ -393,13 +414,16 @@ async def get_video(video_id: str):
                 "Content-Disposition": "inline",
                 "Cache-Control": "public, max-age=3600",
                 "Accept-Ranges": "bytes",
-            }
+            },
         )
     except Exception as e:
         print(f"[Video] ⚠️  Video streaming error: {e}")
         import traceback
+
         traceback.print_exc()
-        return Response(content=b"Error streaming video", status_code=500, media_type="text/plain")
+        return Response(
+            content=b"Error streaming video", status_code=500, media_type="text/plain"
+        )
 
 
 @app.cls(
@@ -428,7 +452,9 @@ class VideoAnalyzer:
             MODEL_CACHE_DIR, torch_dtype="auto", device_map="auto"
         )
         self.processor = AutoProcessor.from_pretrained(MODEL_CACHE_DIR)
-        print(f"[ModelLoad] ✅ Model loaded in {_t.time() - t0:.1f}s — GPU snapshot will be taken")
+        print(
+            f"[ModelLoad] ✅ Model loaded in {_t.time() - t0:.1f}s — GPU snapshot will be taken"
+        )
 
     @modal.method()
     def analyze(
@@ -441,7 +467,7 @@ class VideoAnalyzer:
     ):
         import time as _time
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"[Analyze] 🎬 Starting VL analysis")
         print(f"[Analyze]   activity_type = {activity_type}")
         print(f"[Analyze]   user_description = {user_description}")
@@ -519,16 +545,33 @@ This is the user's first attempt at this movement. There is no previous session 
                         prompt += f"{timestamp_ms}ms: "
                         if keypoints_data.get("keypoints"):
                             # Only include key joints (shoulders, elbows, wrists, hips, knees)
-                            key_joints = ['left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 
-                                        'left_wrist', 'right_wrist', 'left_hip', 'right_hip', 'left_knee', 'right_knee']
+                            key_joints = [
+                                "left_shoulder",
+                                "right_shoulder",
+                                "left_elbow",
+                                "right_elbow",
+                                "left_wrist",
+                                "right_wrist",
+                                "left_hip",
+                                "right_hip",
+                                "left_knee",
+                                "right_knee",
+                            ]
                             kp_data = keypoints_data["keypoints"]
-                            coords_str = ", ".join([f"{kp}=[{kp_data[kp][0]:.2f},{kp_data[kp][1]:.2f}]" 
-                                                   for kp in key_joints if kp in kp_data])
+                            coords_str = ", ".join(
+                                [
+                                    f"{kp}=[{kp_data[kp][0]:.2f},{kp_data[kp][1]:.2f}]"
+                                    for kp in key_joints
+                                    if kp in kp_data
+                                ]
+                            )
                             prompt += coords_str + "\n"
-                
-                print(f"[Analyze] 📊 Pose data: {len(available_timestamps)} frames (sampled every 2nd)")
-                
-                prompt += f"""\nTIMESTAMP RULES: Use exact timestamps from: {', '.join(map(str, available_timestamps[:10]))}{'...' if len(available_timestamps) > 10 else ''}
+
+                print(
+                    f"[Analyze] 📊 Pose data: {len(available_timestamps)} frames (sampled every 2nd)"
+                )
+
+                prompt += f"""\nTIMESTAMP RULES: Use exact timestamps from: {", ".join(map(str, available_timestamps[:10]))}{"..." if len(available_timestamps) > 10 else ""}
 VISUAL RULES: Backend draws skeleton automatically. Always specify LEFT/RIGHT body parts in coaching_script.
 """
 
@@ -672,10 +715,14 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
                 if "severity" not in fp:
                     missing_severity_count += 1
                     fp["severity"] = "intermediate"
-                    print(f"[Analyze] ⚠️  Feedback point missing severity field - defaulting to 'intermediate'")
-            
+                    print(
+                        f"[Analyze] ⚠️  Feedback point missing severity field - defaulting to 'intermediate'"
+                    )
+
             if missing_severity_count > 0:
-                print(f"[Analyze] ⚠️  {missing_severity_count} feedback point(s) were missing severity field (now all have it)")
+                print(
+                    f"[Analyze] ⚠️  {missing_severity_count} feedback point(s) were missing severity field (now all have it)"
+                )
             else:
                 print(f"[Analyze] ✓ All feedback points have severity field")
 
@@ -740,7 +787,7 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
             print(
                 f"[Analyze] ⏱️  Total analyze time: {t_end - t_start:.1f}s (generation: {t_gen_end - t_gen_start:.1f}s)"
             )
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
 
         return result
 
@@ -754,15 +801,28 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
 
         print(f"[Pose] Extracting pose data at {len(timestamps_ms)} timestamps...")
         t_start = _time.time()
-        
+
         model = YOLO("yolo26x-pose.pt")
 
         # COCO keypoint names for clarity
         KEYPOINT_NAMES = [
-            "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-            "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-            "left_wrist", "right_wrist", "left_hip", "right_hip",
-            "left_knee", "right_knee", "left_ankle", "right_ankle",
+            "nose",
+            "left_eye",
+            "right_eye",
+            "left_ear",
+            "right_ear",
+            "left_shoulder",
+            "right_shoulder",
+            "left_elbow",
+            "right_elbow",
+            "left_wrist",
+            "right_wrist",
+            "left_hip",
+            "right_hip",
+            "left_knee",
+            "right_knee",
+            "left_ankle",
+            "right_ankle",
         ]
 
         detected_poses = {}
@@ -781,31 +841,33 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
 
             # Convert timestamps to frame indices
             frame_indices = [int((ts / 1000.0) * fps) for ts in timestamps_ms]
-            
+
             # Read all frames at once (much faster than seeking)
             frames = []
             frame_to_ts = {}
-            
+
             for idx, frame_idx in enumerate(frame_indices):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
                 success, frame = cap.read()
                 if success and frame is not None:
                     frames.append(frame)
                     frame_to_ts[len(frames) - 1] = timestamps_ms[idx]
-            
+
             cap.release()
-            
+
             if not frames:
                 print("[Pose] ⚠️  No frames could be read")
                 return {"detected_poses": {}}
 
             print(f"[Pose] Read {len(frames)} frames in {_time.time() - t_start:.1f}s")
             t_inference_start = _time.time()
-            
+
             # BATCH INFERENCE - process all frames at once (MUCH faster on GPU)
             results = model(frames, verbose=False, conf=0.15)
-            
-            print(f"[Pose] Batch inference on {len(frames)} frames took {_time.time() - t_inference_start:.1f}s")
+
+            print(
+                f"[Pose] Batch inference on {len(frames)} frames took {_time.time() - t_inference_start:.1f}s"
+            )
 
             # Parse results
             for frame_idx, result in enumerate(results):
@@ -837,7 +899,9 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
                         "keypoints": keypoints_dict,
                     }
 
-            print(f"[Pose] ✅ Extracted poses from {len(detected_poses)}/{len(frames)} frames in {_time.time() - t_start:.1f}s total")
+            print(
+                f"[Pose] ✅ Extracted poses from {len(detected_poses)}/{len(frames)} frames in {_time.time() - t_start:.1f}s total"
+            )
             return {"detected_poses": detected_poses}
 
     @modal.method()
@@ -1032,11 +1096,13 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
                                     for i_a, i_b in critiqued_segments:
                                         if i_a >= len(person) or i_b >= len(person):
                                             continue
-                                        sx, sy = float(person[i_a][0] / width), float(
-                                            person[i_a][1] / height
+                                        sx, sy = (
+                                            float(person[i_a][0] / width),
+                                            float(person[i_a][1] / height),
                                         )
-                                        ex, ey = float(person[i_b][0] / width), float(
-                                            person[i_b][1] / height
+                                        ex, ey = (
+                                            float(person[i_b][0] / width),
+                                            float(person[i_b][1] / height),
                                         )
                                         if (
                                             abs(vs[0] - sx) < 0.01
@@ -1107,8 +1173,8 @@ async def analyze(request: Request):
     activity_type = form.get("activity_type", "Unknown Activity")
     user_description = form.get("user_description", "")
     previous_analysis_str = form.get("previous_analysis", "")
-
-    print(f"\n{'#'*60}")
+    elevenlabs_voice_id = form.get("voice_id", "s3TPKV1kjDlVtZbl4Ksh")
+    print(f"\n{'#' * 60}")
     print(f"[Endpoint] 📥 Incoming POST /analyze")
     print(f"[Endpoint]   activity_type = {activity_type}")
     print(f"[Endpoint]   user_description = {user_description[:100]}")
@@ -1132,7 +1198,7 @@ async def analyze(request: Request):
 
     video_bytes = await video_file.read()
     print(
-        f"[Endpoint]   video_size = {len(video_bytes):,} bytes ({len(video_bytes)/1024/1024:.1f} MB)"
+        f"[Endpoint]   video_size = {len(video_bytes):,} bytes ({len(video_bytes) / 1024 / 1024:.1f} MB)"
     )
 
     # 2. Extract pose data from video for LLM context
@@ -1140,29 +1206,37 @@ async def analyze(request: Request):
     try:
         import cv2
         import tempfile as tf
-        
+
         # Determine video fps and total frames to calculate frame timestamps
         with tf.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp.write(video_bytes)
             tmp.flush()
-            
+
             cap = cv2.VideoCapture(tmp.name)
             fps = cap.get(cv2.CAP_PROP_FPS)
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             duration_seconds = total_frames / fps
             cap.release()
-            
+
             # Sample every 6th frame (at 30fps = 5 samples/sec, plenty for pose analysis)
             # Limit to first 5 seconds to keep LLM prompt manageable
             max_duration = min(5.0, duration_seconds)
             max_frame = int(max_duration * fps)
-            
+
             # Start at frame 0, then 6, 12, 18, etc.
-            sample_timestamps = [int((frame_idx / fps) * 1000) for frame_idx in range(0, max_frame, 6)]
-            print(f"[Endpoint] Video: {fps:.2f} fps, {total_frames} frames total, {duration_seconds:.1f}s duration")
-            print(f"[Endpoint] 🦴 Extracting pose data from every 6th frame for first {max_duration:.1f}s")
-            print(f"[Endpoint] 🦴 Generated {len(sample_timestamps)} timestamps: {sample_timestamps[:10]}{'...' if len(sample_timestamps) > 10 else ''}")
-        
+            sample_timestamps = [
+                int((frame_idx / fps) * 1000) for frame_idx in range(0, max_frame, 6)
+            ]
+            print(
+                f"[Endpoint] Video: {fps:.2f} fps, {total_frames} frames total, {duration_seconds:.1f}s duration"
+            )
+            print(
+                f"[Endpoint] 🦴 Extracting pose data from every 6th frame for first {max_duration:.1f}s"
+            )
+            print(
+                f"[Endpoint] 🦴 Generated {len(sample_timestamps)} timestamps: {sample_timestamps[:10]}{'...' if len(sample_timestamps) > 10 else ''}"
+            )
+
         t_pose_start = _time.time()
         pose_data = await VideoAnalyzer().extract_pose_data.remote.aio(
             video_bytes=video_bytes, timestamps_ms=sample_timestamps
@@ -1225,15 +1299,10 @@ async def analyze(request: Request):
     if feedback_points:
         try:
             t_tts_start = _time.time()
-            api_key = (
-                os.environ.get("elevenlabs")
-                or os.environ.get("ELEVENLABS_API_KEY")
-                or os.environ.get("XI_API_KEY")
-                or os.environ.get("ELEVEN_LABS_API_KEY")
-            )
+            api_key = os.environ.get("elevenlabs")
             if not api_key:
                 print(
-                    "[Endpoint] ⚠️  ElevenLabs API key not found (checked ELEVEN_API_KEY/ELEVENLABS_API_KEY/XI_API_KEY), continuing without audio"
+                    "[Endpoint] ⚠️  ElevenLabs API key not found, continuing without audio"
                 )
                 raise RuntimeError("missing_elevenlabs_key")
 
@@ -1249,7 +1318,7 @@ async def analyze(request: Request):
 
                 audio_gen = client.text_to_speech.convert(
                     text=script,
-                    voice_id="s3TPKV1kjDlVtZbl4Ksh",
+                    voice_id=elevenlabs_voice_id,
                 )
                 audio_bytes = b"".join(list(audio_gen))
                 audio_results[idx] = base64.b64encode(audio_bytes).decode("utf-8")
@@ -1262,7 +1331,7 @@ async def analyze(request: Request):
         except Exception as e:
             if str(e) != "missing_elevenlabs_key":
                 print(
-                    f"[Endpoint] ⚠️  ElevenLabs TTS failed ({type(e).__name__}), continuing without audio"
+                    f"[Endpoint] ⚠️  ElevenLabs TTS failed ({type(e).__name__}, {e}), continuing without audio"
                 )
 
     # 5. Add pose skeleton overlays to each feedback timestamp
@@ -1288,34 +1357,40 @@ async def analyze(request: Request):
     # Store video in Modal volume for streaming
     video_id = _generate_video_id()
     video_path = f"/tmp/video-cache/{video_id}.mp4"
-    
+
     import os
+
     os.makedirs("/tmp/video-cache", exist_ok=True)
-    
+
     # Write video file with proper flushing
     try:
         with open(video_path, "wb") as f:
             f.write(video_bytes)
             f.flush()  # Ensure data is written to disk
             os.fsync(f.fileno())  # Force sync to disk
-        
+
         # Verify file was written
         written_size = os.path.getsize(video_path)
-        print(f"[Endpoint] 📹 Wrote video {video_id}: {written_size / 1024 / 1024:.2f} MB")
-        
+        print(
+            f"[Endpoint] 📹 Wrote video {video_id}: {written_size / 1024 / 1024:.2f} MB"
+        )
+
         if written_size != len(video_bytes):
-            print(f"[Endpoint] ⚠️  WARNING: Wrote {written_size} bytes but original was {len(video_bytes)} bytes")
+            print(
+                f"[Endpoint] ⚠️  WARNING: Wrote {written_size} bytes but original was {len(video_bytes)} bytes"
+            )
     except Exception as e:
         print(f"[Endpoint] ❌ Failed to write video file: {e}")
         import traceback
+
         traceback.print_exc()
         raise
-    
+
     # Get the deployed endpoint URL for video streaming (query parameter style)
     video_url = f"https://kevinhyang2006--biomechanics-ai-get-video.modal.run?video_id={video_id}"
-    
+
     print(f"[Endpoint] 🔗 Video URL: {video_url}")
-    
+
     final_feedback_points = []
     for fp, audio_b64 in zip(feedback_points, audio_results):
         fp_copy = fp.copy()
@@ -1346,6 +1421,6 @@ async def analyze(request: Request):
                 )
     print(json.dumps(log_response, indent=2))
     print(f"\n[Endpoint] ⏱️  Total request time: {t_request_end - t_request_start:.1f}s")
-    print(f"{'#'*60}\n")
+    print(f"{'#' * 60}\n")
 
     return Response(content=json.dumps(llm_response), media_type="application/json")

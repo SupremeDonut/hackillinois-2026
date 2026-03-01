@@ -1,4 +1,8 @@
-export type ActivityType = 'basketball_shot' | 'golf_swing' | 'tennis_serve' | 'other';
+export type ActivityType =
+    | "basketball_shot"
+    | "golf_swing"
+    | "tennis_serve"
+    | "other";
 
 // ─── Account ─────────────────────────────────────────────────────────────────
 
@@ -11,16 +15,16 @@ export interface Account {
 // ─── Goal / Progression ───────────────────────────────────────────────────────
 
 export interface GoalRun {
-    date: string;          // ISO timestamp of the session
-    score: number;         // 0–100 form score
+    date: string; // ISO timestamp of the session
+    score: number; // 0–100 form score
     improvement_delta: number | null;
 }
 
 export interface Goal {
     id: string;
-    name: string;          // user-defined goal description
+    name: string; // user-defined goal description
     activityType: string;
-    createdAt: string;     // ISO timestamp
+    createdAt: string; // ISO timestamp
     runs: GoalRun[];
 }
 
@@ -30,7 +34,7 @@ export interface FeedbackPoint {
     mistake_timestamp_ms: number;
     coaching_script: string;
     visuals: {
-        overlay_type: 'ANGLE_CORRECTION' | 'POSITION_MARKER' | 'PATH_TRACE';
+        overlay_type: "ANGLE_CORRECTION" | "POSITION_MARKER" | "PATH_TRACE";
         focus_point?: { x: number; y: number };
         vectors?: Array<{
             start: [number, number];
@@ -44,7 +48,7 @@ export interface FeedbackPoint {
 }
 
 export interface AnalysisResponse {
-    status: 'success' | 'low_confidence' | 'error';
+    status: "success" | "low_confidence" | "error";
     error_message?: string;
     feedback_points: FeedbackPoint[];
     positive_note: string;
@@ -55,9 +59,31 @@ export interface AnalysisResponse {
 export type RootStackParamList = {
     Onboarding: undefined;
     Home: undefined;
-    Recording: { activityType: ActivityType | string; description?: string; previousData?: AnalysisResponse; goalId?: string };
-    Analyzing: { videoUri: string; activityType: ActivityType | string; description: string; previousData?: AnalysisResponse; goalId?: string };
-    Playback: { videoUri: string; data: AnalysisResponse; activityType: ActivityType | string; goalId?: string };
-    Complete: { data: AnalysisResponse; activityType: ActivityType | string; goalId?: string };
+    Recording: {
+        activityType: ActivityType | string;
+        description?: string;
+        previousData?: AnalysisResponse;
+        goalId?: string;
+        voiceId: string;
+    };
+    Analyzing: {
+        videoUri: string;
+        activityType: ActivityType | string;
+        description: string;
+        previousData?: AnalysisResponse;
+        goalId?: string;
+        voiceId: string;
+    };
+    Playback: {
+        videoUri: string;
+        data: AnalysisResponse;
+        activityType: ActivityType | string;
+        goalId?: string;
+    };
+    Complete: {
+        data: AnalysisResponse;
+        activityType: ActivityType | string;
+        goalId?: string;
+    };
     GoalDetail: { goalId: string };
 };
