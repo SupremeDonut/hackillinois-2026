@@ -162,7 +162,7 @@ export default function PlaybackScreen() {
                             <View style={S.overlayBox}>
                                 <Text style={S.coachingHeader}>Coach Says</Text>
                                 <Text style={S.coachingText}>{currentFeedback.coaching_script}</Text>
-                                <Text style={S.timestampText}>Paused at {currentFeedback.mistake_timestamp_ms}ms</Text>
+                                <Text style={S.timestampText}>Paused at {(currentFeedback.mistake_timestamp_ms / 1000).toFixed(1)}s</Text>
 
                                 <TouchableOpacity
                                     style={S.showFrameBtn}
@@ -246,19 +246,24 @@ const S = StyleSheet.create({
         width: '100%',
         borderWidth: 1,
         borderColor: Colors.primaryBorder,
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.25,
+        shadowRadius: 20,
+        elevation: 12,
     },
     coachingHeader: {
         color: Colors.primary,
-        fontSize: 10,
-        fontWeight: '700',
-        marginBottom: 8,
+        fontSize: 11,
+        fontWeight: '800',
+        marginBottom: 10,
         textTransform: 'uppercase',
-        letterSpacing: 1.5,
+        letterSpacing: 2,
     },
     coachingText: {
         color: Colors.text,
         fontSize: 17,
-        lineHeight: 26,
+        lineHeight: 27,
         fontWeight: '500',
     },
     timestampText: {
@@ -313,8 +318,13 @@ const S = StyleSheet.create({
     },
     playbackStatus: {
         color: Colors.textSecondary,
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: '600',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: 16,
+        paddingVertical: 7,
+        borderRadius: 20,
+        overflow: 'hidden',
     },
     finishBtn: {
         backgroundColor: Colors.primary,

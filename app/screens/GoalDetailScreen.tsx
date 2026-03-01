@@ -6,6 +6,7 @@ import {
     StyleSheet,
     ScrollView,
     Alert,
+    SafeAreaView,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -197,6 +198,7 @@ export default function GoalDetailScreen() {
     };
 
     return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <ScrollView
             style={S.screen}
             contentContainerStyle={S.scroll}
@@ -283,6 +285,7 @@ export default function GoalDetailScreen() {
                 <Text style={S.ctaText}>Start New Session</Text>
             </TouchableOpacity>
         </ScrollView>
+        </SafeAreaView>
     );
 }
 
@@ -304,7 +307,7 @@ const S = StyleSheet.create({
     screen: { flex: 1, backgroundColor: Colors.background },
     scroll: {
         paddingHorizontal: Spacing.lg,
-        paddingTop: 56,
+        paddingTop: 20,
         paddingBottom: 48,
     },
     header: {
@@ -382,11 +385,10 @@ const S = StyleSheet.create({
         marginBottom: Spacing.lg,
     },
     chartTitle: {
-        color: Colors.textSecondary,
-        fontSize: 11,
-        fontWeight: '700',
-        textTransform: 'uppercase',
-        letterSpacing: 1.2,
+        color: Colors.text,
+        fontSize: 14,
+        fontWeight: '800',
+        letterSpacing: -0.2,
         marginBottom: Spacing.sm,
     },
     chartWrap: { alignItems: 'center' },
@@ -426,7 +428,7 @@ const S = StyleSheet.create({
     },
     historyRight: { alignItems: 'flex-end' },
     historyScore: {
-        color: Colors.text,
+        color: Colors.primary,
         fontSize: 20,
         fontWeight: '800',
     },

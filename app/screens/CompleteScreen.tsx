@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, ScrollView, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Audio, Video, ResizeMode } from 'expo-av';
+import { Audio } from 'expo-av';
 import { RootStackParamList } from '../types';
 import { Colors, Spacing, Radius } from '../styles/theme';
 import { addRunToGoal } from '../services/goalStore';
@@ -12,6 +12,19 @@ type CompleteRouteProp = RouteProp<RootStackParamList, 'Complete'>;
 
 const BAR_WIDTH = 280;
 type SeverityTab = 'major' | 'intermediate' | 'minor';
+
+const GRADE_COLORS: Record<string, string> = {
+    Elite: '#00E5A0',
+    Good: '#90EDB0',
+    Progress: '#F5C84A',
+    'Keep Going': '#F07070',
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+    major: '#F07070',
+    intermediate: '#F5C84A',
+    minor: '#90EDB0',
+};
 
 export default function CompleteScreen() {
     const navigation = useNavigation<NavigationProp>();
@@ -23,10 +36,6 @@ export default function CompleteScreen() {
     const [playingIndex, setPlayingIndex] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState<number | null>(null);
     const soundRef = useRef<Audio.Sound | null>(null);
-
-    // Video playback state
-    const [expandedVideoIndex, setExpandedVideoIndex] = useState<number | null>(null);
-    const videoRefs = useRef<{ [key: number]: any }>({});
 
     const score = data.progress_score;
     const delta = data.improvement_delta ?? null;
@@ -121,28 +130,6 @@ export default function CompleteScreen() {
         }
     };
 
-    // Handle video playback
-    const handlePlayVideo = async (videoUrl: string, timestamp: number, feedbackIndex: number) => {
-        try {
-            if (expandedVideoIndex === feedbackIndex) {
-                setExpandedVideoIndex(null);
-                return;
-            }
-
-            setExpandedVideoIndex(feedbackIndex);
-
-            // Seek to mistake timestamp after a brief delay for the video to load
-            setTimeout(() => {
-                const videoRef = videoRefs.current[feedbackIndex];
-                if (videoRef) {
-                    videoRef.playAsync();
-                }
-            }, 500);
-        } catch (error) {
-            console.error('Video playback error:', error);
-        }
-    };
-
     return (
         <ScrollView
             style={S.screen}
@@ -153,7 +140,9 @@ export default function CompleteScreen() {
 
                 {/* ── Header ── */}
                 <View style={S.header}>
-                    <Text style={S.gradeText}>{grade}</Text>
+                    <View style={[S.gradePill, { backgroundColor: (GRADE_COLORS[grade] ?? '#00E5A0') + '22', borderColor: (GRADE_COLORS[grade] ?? '#00E5A0') + '77' }]}>
+                        <Text style={[S.gradeText, { color: GRADE_COLORS[grade] ?? '#00E5A0' }]}>{grade}</Text>
+                    </View>
                     <Text style={S.title}>Session Complete</Text>
                     {data.positive_note ? (
                         <Text style={S.positiveNote}>{data.positive_note}</Text>
@@ -219,14 +208,17 @@ export default function CompleteScreen() {
                                     onPress={() => setActiveTab(tab)}
                                     activeOpacity={0.7}
                                 >
-                                    <Text
-                                        style={[
-                                            S.tabButtonText,
-                                            activeTab === tab && S.tabButtonTextActive,
-                                        ]}
-                                    >
-                                        {tab.charAt(0).toUpperCase() + tab.slice(1)} ({feedbackByLevel[tab].length})
-                                    </Text>
+                                    <View style={S.tabButtonInner}>
+                                        <View style={[S.tabDot, { backgroundColor: activeTab === tab ? '#16161F' : SEVERITY_COLORS[tab] }]} />
+                                        <Text
+                                            style={[
+                                                S.tabButtonText,
+                                                activeTab === tab && S.tabButtonTextActive,
+                                            ]}
+                                        >
+                                            {tab.charAt(0).toUpperCase() + tab.slice(1)} ({feedbackByLevel[tab].length})
+                                        </Text>
+                                    </View>
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -235,52 +227,11 @@ export default function CompleteScreen() {
                         <View style={S.feedbackList}>
                             {activeFeedback.length > 0 ? (
                                 activeFeedback.map((feedback: any, idx: number) => (
-                                    <View key={idx} style={S.feedbackCard}>
-                                        {/* Video Player - Expanded */}
-                                        {expandedVideoIndex === idx && feedback.video_url && (
-                                            <View style={S.videoContainer}>
-                                                <Video
-                                                    ref={(ref) => {
-                                                        videoRefs.current[idx] = ref;
-                                                    }}
-                                                    source={{ uri: feedback.video_url }}
-                                                    style={S.videoPlayer}
-                                                    resizeMode={ResizeMode.CONTAIN}
-                                                    useNativeControls
-                                                    onLoadStart={() => {
-                                                        if (videoRefs.current[idx]) {
-                                                            videoRefs.current[idx].pauseAsync();
-                                                            videoRefs.current[idx].setPositionAsync(feedback.mistake_timestamp_ms);
-                                                        }
-                                                    }}
-                                                    onError={(error) => {
-                                                        console.error('Video error:', error);
-                                                    }}
-                                                />
-                                                <Text style={S.videoTimestamp}>
-                                                    @{(feedback.mistake_timestamp_ms / 1000).toFixed(1)}s
-                                                </Text>
-                                            </View>
-                                        )}
-
+                                    <View key={idx} style={[S.feedbackCard, { borderLeftColor: SEVERITY_COLORS[activeTab], borderLeftWidth: 3 }]}>
                                         {/* Feedback Card Header */}
                                         <View style={S.feedbackCardHeader}>
                                             <Text style={S.feedbackCoachingScript}>{feedback.coaching_script}</Text>
                                             <View style={S.buttonGroup}>
-                                                {feedback.video_url && (
-                                                    <TouchableOpacity
-                                                        style={[
-                                                            S.actionButton,
-                                                            expandedVideoIndex === idx && S.actionButtonActive,
-                                                        ]}
-                                                        onPress={() => handlePlayVideo(feedback.video_url, feedback.mistake_timestamp_ms, idx)}
-                                                        activeOpacity={0.7}
-                                                    >
-                                                        <Text style={S.actionButtonText}>
-                                                            {expandedVideoIndex === idx ? '✕' : '▶'}
-                                                        </Text>
-                                                    </TouchableOpacity>
-                                                )}
                                                 {feedback.audio_url && (
                                                     <TouchableOpacity
                                                         style={[
@@ -352,11 +303,18 @@ const S = StyleSheet.create({
         alignItems: 'center',
         marginBottom: Spacing.xl,
     },
+    gradePill: {
+        borderRadius: 999,
+        borderWidth: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        marginBottom: 12,
+    },
     gradeText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: Colors.primary,
-        marginBottom: Spacing.sm,
+        fontSize: 13,
+        fontWeight: '800',
+        letterSpacing: 1,
+        textTransform: 'uppercase',
     },
     title: {
         fontSize: 30,
@@ -489,10 +447,10 @@ const S = StyleSheet.create({
         marginBottom: Spacing.xl,
     },
     feedbackSectionTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: Colors.textSecondary,
-        letterSpacing: 1.2,
+        fontSize: 17,
+        fontWeight: '800',
+        color: Colors.text,
+        letterSpacing: -0.3,
         marginBottom: Spacing.md,
     },
     tabContainer: {
@@ -502,13 +460,23 @@ const S = StyleSheet.create({
     },
     tabButton: {
         flex: 1,
-        paddingVertical: 8,
+        paddingVertical: 10,
         paddingHorizontal: 12,
         borderRadius: Radius.md,
         borderWidth: 1,
         borderColor: Colors.glassBorder,
         backgroundColor: Colors.surface,
         alignItems: 'center',
+    },
+    tabButtonInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    tabDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 4,
     },
     tabButtonActive: {
         backgroundColor: Colors.primary,
@@ -535,29 +503,7 @@ const S = StyleSheet.create({
         borderRadius: Radius.md,
         padding: Spacing.md,
         marginBottom: Spacing.sm,
-    },
-    videoContainer: {
-        backgroundColor: '#000',
-        borderRadius: Radius.md,
         overflow: 'hidden',
-        marginBottom: Spacing.md,
-        height: 200,
-    },
-    videoPlayer: {
-        width: '100%',
-        height: '100%',
-    },
-    videoTimestamp: {
-        position: 'absolute',
-        bottom: Spacing.sm,
-        left: Spacing.sm,
-        backgroundColor: 'rgba(0,0,0,0.8)',
-        color: Colors.background,
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 4,
-        borderRadius: Radius.sm,
-        fontSize: 11,
-        fontWeight: '600',
     },
     feedbackCardHeader: {
         flexDirection: 'row',

@@ -4,33 +4,33 @@ import { StyleSheet, Platform } from 'react-native';
 
 export const Colors = {
     // Core palette
-    background: '#0A0A0F',       // Near-black with a cool blue tint
-    backgroundAlt: '#111118',    // Slightly lighter for layering
-    surface: '#1A1A24',          // Card / input surface
-    surfaceHighlight: '#22222F', // Hover / pressed state
+    background: '#16161F',       // Dark navy-charcoal (lifted from near-black)
+    backgroundAlt: '#1E1E2C',    // Slightly lighter for layering
+    surface: '#26263A',          // Card / input surface
+    surfaceHighlight: '#30304A', // Hover / pressed state
 
-    // Accent — electric teal-green (more distinctive than plain #4CAF50)
+    // Accent — electric teal-green
     primary: '#00E5A0',
-    primaryDim: 'rgba(0, 229, 160, 0.15)',
-    primaryBorder: 'rgba(0, 229, 160, 0.35)',
+    primaryDim: 'rgba(0, 229, 160, 0.18)',
+    primaryBorder: 'rgba(0, 229, 160, 0.40)',
 
     // Status colours
-    error: '#E86060',             // Soft rose (set by user preference)
-    errorDim: 'rgba(232, 96, 96, 0.15)',
-    success: '#7EE8A2',           // Light mint (delta positive)
+    error: '#F07070',             // Soft rose
+    errorDim: 'rgba(240, 112, 112, 0.18)',
+    success: '#90EDB0',           // Light mint (delta positive)
 
     // Text
-    text: '#F0F0F8',
-    textSecondary: '#7A7A9A',
-    textMuted: '#444460',
+    text: '#F4F4FC',
+    textSecondary: '#9898B8',
+    textMuted: '#66667E',
 
     // SVG overlay colours (unchanged — backend uses these)
     vectorCurrent: '#FF3B30',
     vectorTarget: '#34C759',
 
     // Glassmorphism border
-    glassBorder: 'rgba(255,255,255,0.07)',
-    glassBg: 'rgba(255,255,255,0.04)',
+    glassBorder: 'rgba(255,255,255,0.11)',
+    glassBg: 'rgba(255,255,255,0.06)',
 };
 
 export const Spacing = {

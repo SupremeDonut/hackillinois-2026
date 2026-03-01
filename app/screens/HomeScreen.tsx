@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import {
     View, Text, TouchableOpacity, StyleSheet, TextInput,
-    KeyboardAvoidingView, Platform, ScrollView, Alert,
+    KeyboardAvoidingView, Platform, ScrollView, Alert, SafeAreaView,
 } from 'react-native';
+import Svg, { Path, Ellipse } from 'react-native-svg';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Goal } from '../types';
@@ -49,9 +50,10 @@ export default function HomeScreen() {
     };
 
     return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }}>
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, backgroundColor: Colors.background }}
+            style={{ flex: 1 }}
         >
             <ScrollView
                 contentContainerStyle={S.scroll}
@@ -60,11 +62,58 @@ export default function HomeScreen() {
             >
                 {/* ── Brand ── */}
                 <View style={S.brand}>
-                    <View style={S.logoMark}>
-                        <View style={S.logoInner} />
-                    </View>
-                    <Text style={S.appName}>MotionCoach</Text>
-                    <Text style={S.tagline}>Coaching for every hobby.</Text>
+                    <Svg width={88} height={72} viewBox="0 0 88 72" style={{ marginBottom: 14 }}>
+                        {/* Left upper wing */}
+                        <Path
+                            d="M44 36 C36 28, 14 20, 8 10 C4 2, 16 0, 24 6 C32 12, 40 24, 44 36Z"
+                            fill="#00E5A0"
+                            opacity={0.95}
+                        />
+                        {/* Right upper wing */}
+                        <Path
+                            d="M44 36 C52 28, 74 20, 80 10 C84 2, 72 0, 64 6 C56 12, 48 24, 44 36Z"
+                            fill="#00E5A0"
+                            opacity={0.95}
+                        />
+                        {/* Left lower wing */}
+                        <Path
+                            d="M44 38 C36 44, 12 46, 8 56 C4 64, 18 68, 28 60 C36 54, 42 46, 44 38Z"
+                            fill="#00C47A"
+                            opacity={0.85}
+                        />
+                        {/* Right lower wing */}
+                        <Path
+                            d="M44 38 C52 44, 76 46, 80 56 C84 64, 70 68, 60 60 C52 54, 46 46, 44 38Z"
+                            fill="#00C47A"
+                            opacity={0.85}
+                        />
+                        {/* Wing shimmer spots left upper */}
+                        <Ellipse cx={26} cy={18} rx={5} ry={3} fill="rgba(255,255,255,0.25)" />
+                        {/* Wing shimmer spots right upper */}
+                        <Ellipse cx={62} cy={18} rx={5} ry={3} fill="rgba(255,255,255,0.25)" />
+                        {/* Body */}
+                        <Ellipse cx={44} cy={37} rx={3} ry={14} fill="#E8FFF7" opacity={0.9} />
+                        {/* Left antenna */}
+                        <Path
+                            d="M42 24 C40 16, 34 10, 30 6"
+                            stroke="#90EDB0"
+                            strokeWidth={1.5}
+                            fill="none"
+                            strokeLinecap="round"
+                        />
+                        <Ellipse cx={30} cy={6} rx={2} ry={2} fill="#90EDB0" />
+                        {/* Right antenna */}
+                        <Path
+                            d="M46 24 C48 16, 54 10, 58 6"
+                            stroke="#90EDB0"
+                            strokeWidth={1.5}
+                            fill="none"
+                            strokeLinecap="round"
+                        />
+                        <Ellipse cx={58} cy={6} rx={2} ry={2} fill="#90EDB0" />
+                    </Svg>
+                    <Text style={S.appName}>Morphi</Text>
+                    <Text style={S.tagline}>Learning for every hobby.</Text>
                 </View>
 
                 {/* ── Input Card ── */}
@@ -128,6 +177,8 @@ export default function HomeScreen() {
                 </TouchableOpacity>
 
                 <Text style={S.hint}>Max 5 seconds of footage</Text>
+
+                <View style={S.sectionDivider} />
 
                 {/* ── Goals Section ── */}
                 <View style={S.goalsHeader}>
@@ -210,6 +261,7 @@ export default function HomeScreen() {
                 })}
             </ScrollView>
         </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
@@ -217,34 +269,13 @@ const S = StyleSheet.create({
     scroll: {
         flexGrow: 1,
         paddingHorizontal: Spacing.lg,
-        paddingTop: 80,
+        paddingTop: 32,
         paddingBottom: 48,
         backgroundColor: Colors.background,
     },
     brand: {
         alignItems: 'center',
         marginBottom: 48,
-    },
-    logoMark: {
-        width: 52,
-        height: 52,
-        borderRadius: 16,
-        backgroundColor: Colors.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 14,
-        shadowColor: Colors.primary,
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.35,
-        shadowRadius: 16,
-        elevation: 10,
-    },
-    logoInner: {
-        width: 22,
-        height: 22,
-        borderRadius: 4,
-        backgroundColor: Colors.background,
-        opacity: 0.85,
     },
     appName: {
         fontSize: 30,
@@ -345,6 +376,11 @@ const S = StyleSheet.create({
         fontSize: 12,
         textAlign: 'center',
         marginTop: Spacing.md,
+        marginBottom: Spacing.lg,
+    },
+    sectionDivider: {
+        height: 1,
+        backgroundColor: Colors.glassBorder,
         marginBottom: Spacing.xl,
     },
     // ── Goals section ──────────────────────────────────────────────────────
@@ -356,9 +392,9 @@ const S = StyleSheet.create({
     },
     goalsTitle: {
         color: Colors.text,
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '800',
-        letterSpacing: -0.4,
+        letterSpacing: -0.5,
     },
     addGoalBtn: {
         paddingHorizontal: 14,
@@ -389,6 +425,9 @@ const S = StyleSheet.create({
         marginBottom: Spacing.sm,
         flexDirection: 'row',
         alignItems: 'center',
+        borderLeftWidth: 3,
+        borderLeftColor: Colors.primary,
+        overflow: 'hidden',
     },
     goalCardLeft: { flex: 1, marginRight: Spacing.sm },
     goalCardActivity: {
@@ -411,8 +450,8 @@ const S = StyleSheet.create({
     },
     goalCardRight: { alignItems: 'flex-end' },
     goalCardScore: {
-        color: Colors.text,
-        fontSize: 22,
+        color: Colors.primary,
+        fontSize: 24,
         fontWeight: '800',
     },
     goalCardNoScore: {
