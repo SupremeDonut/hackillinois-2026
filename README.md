@@ -1,6 +1,8 @@
 # Morphi
 
-AI-powered coaching for physical activities. Record a short video of your basketball shot, golf swing, guitar strumming, or dance move, describe what you want to improve, and get real-time feedback with visual overlays and voice narration.
+![](logo.png)
+
+AI-powered coaching for physical activities. Record a short video of your basketball shot, golf swing, guitar strumming, or dance move, describe what you want to improve, and get real-time feedback with visual overlays and voice narration. All built on a custom Lora trained version of Qwen3.
 
 Built at [HackIllinois 2026](https://hackillinois.org).
 
@@ -16,7 +18,7 @@ Built at [HackIllinois 2026](https://hackillinois.org).
 
 ## Overview
 
-MotionCoach AI is a mobile app that turns your phone into a personal sports coach. Point your camera at yourself practicing any physical activity -- a basketball free throw, a yoga pose, a golf swing -- and the app tells you exactly what to fix, shows you where on your body to adjust, and speaks the correction out loud.
+Morphi is a mobile app that turns your phone into a personal sports coach. Point your camera at yourself practicing any physical activity -- a basketball free throw, a yoga pose, a golf swing -- and the app tells you exactly what to fix, shows you where on your body to adjust, and speaks the correction out loud.
 
 Under the hood, this is a full-stack ML system:
 
@@ -26,13 +28,82 @@ Under the hood, this is a full-stack ML system:
 - Feedback is structured as machine-readable JSON with `ANGLE_CORRECTION` vectors tied to YOLO keypoints, enabling the app to render precise visual overlays (current joint angle vs. target) directly from model output.
 - **ElevenLabs TTS** converts the coaching text into natural voice narration for a hands-free experience.
 
-The key insight is that pose detection alone can tell you *where* joints are, but not *what's wrong* or *how to fix it*. By combining skeleton data with a fine-tuned VLM, we bridge the gap between raw pose estimation and actionable coaching.
+The key insight is that pose detection alone can tell you _where_ joints are, but not _what's wrong_ or _how to fix it_. By combining skeleton data with a fine-tuned VLM, we bridge the gap between raw pose estimation and actionable coaching.
 
 ## Demo
 
 ```
-Record (≤5s) → Describe goal → AI analyzes → Video pauses at mistake → Overlay + voice feedback → Progress score → Retry
+Onboarding → Set Goal → Record (≤5s) → AI Analyzes → Playback with Overlays + Voice → Results & Score → Retry / Track Progress
 ```
+
+## Frontend Features
+
+### Onboarding
+
+A first-time welcome screen where users create an account with a display name and email. The app remembers the account locally via AsyncStorage and skips onboarding on subsequent launches.
+
+### Activity Selection & Focus Description
+
+On the home screen, users pick an activity type from preset chips (Basketball Shot, Golf Swing, Badminton Smash, Tennis Serve, Guitar Chord, Dance Move) or type a custom one. An optional multiline text field lets users describe a specific area to focus on (e.g., "I want to keep my elbow higher on the follow-through").
+
+### Voice Coach Selection
+
+Users choose from three AI voice coaches — **Peter** (default), **Brock** (drill sergeant), and **Maria** (soft) — each with a distinct personality. The selected voice is used for all spoken feedback during playback.
+
+### Video Recording with Countdown
+
+The recording screen opens a full-screen camera with a 3-second "Get ready!" pre-countdown, then records up to 5 seconds with a visible timer. Users can flip between front and back cameras and cancel during the countdown. An activity badge at the top confirms what they're recording.
+
+### Analysis Progress
+
+While the backend processes the video, an animated loading screen shows seven discrete stages (uploading, pose detection, AI analysis, generating feedback, voice synthesis, building overlays, finalizing) with a progress bar and spinning geometric animation.
+
+### Coaching Playback with Timed Overlays
+
+The playback screen syncs AI feedback to the video timeline. At each feedback timestamp the video pauses and displays a two-step coaching overlay:
+
+1. **Coach Says** — a text card with the coaching script and a "Show Corrected Frame" button.
+2. **Frame View** — an SVG overlay drawn directly on the paused frame, showing current vs. target joint positions with angle arcs, correction vectors, and degree labels.
+
+The AI voice narration plays automatically at each pause point. A bottom bar shows "Watching your form…" during playback and switches to "View Results" when all feedback has been presented.
+
+### Visual Overlay Engine
+
+The `SVGOverlay` component renders three types of corrections on the video frame using `react-native-svg`:
+
+- **Angle Corrections** — red (current) and green (target) vectors radiating from a joint, with an arc and degree label showing the adjustment needed.
+- **Position Markers** — focus circles highlighting specific body parts.
+- **Path Traces** — curved motion paths for trajectory corrections.
+
+All coordinates are normalized (0–1) and scaled to the video layout at render time.
+
+### Session Results
+
+After playback, the complete screen shows:
+
+- A **grade pill** (Elite / Good / Progress / Keep Going) based on the form score.
+- An **animated score bar** (0–100) with improvement delta compared to the last attempt.
+- A **positive note** highlighting what the user did well.
+- **Feedback cards** organized by severity tabs (Major, Intermediate, Minor), each with a button to replay the AI voice clip for that correction.
+- **Try Again** (re-records with the previous analysis context for comparison) and **New Session** actions.
+
+### Goal Tracking
+
+Users can create named goals from the home screen (e.g., "Fix my free-throw arc"). Each goal is tied to an activity type and persists locally. The home screen displays goal cards showing the activity type, goal name, session count, latest score, and improvement delta since the last session.
+
+### Goal Detail & Progression Chart
+
+Tapping a goal card opens a detail screen with:
+
+- **Stats row** — total sessions, latest score, and personal best.
+- **Progression chart** — an SVG line chart plotting the form score across all sessions, with color-coded dots (green for improvement, red for regression, teal for first attempt) and score labels.
+- **Session history** — a chronological list of every session with its score and delta.
+- A **Start New Session** button to record again for that goal.
+- **Delete goal** with a confirmation dialog.
+
+### Design System
+
+The app uses a dark theme (`#16161F` background) with teal (`#00E5A0`) as the primary accent. Consistent design tokens for spacing, border radius, typography, and card styles are defined in `app/styles/theme.ts` and shared across all screens.
 
 ## Running the App
 
@@ -124,9 +195,10 @@ We built an automated pipeline that creates high-quality pose correction trainin
 **2. YOLO26x-pose filtering.** Every image is passed through YOLO26x-pose on GPU. We enforce strict quality gates: exactly one person detected, at least 3 visible keypoints with confidence > 0.3. Multi-person scenes, occluded athletes, and non-person images are discarded. This runs in parallel (one T4 GPU per sport category) for speed.
 
 **3. Gemini 3.0 Flash distillation.** Each filtered image, along with its YOLO keypoint coordinates, is sent to Gemini 3.0 Flash (with structured JSON output mode) to generate coaching labels. The prompt requires Gemini to produce:
+
 - A **progress score** (0-100) grading overall form quality
 - A **positive note** highlighting what the athlete does well
-- 1-3 **feedback points**, each with a coaching script and precise **ANGLE_CORRECTION** visual overlays (current vs. target vectors anchored to YOLO keypoint coordinates)
+- 1-5 **feedback points**, each with a coaching script and precise **ANGLE_CORRECTION** visual overlays (current vs. target vectors anchored to YOLO keypoint coordinates)
 
 This is knowledge distillation: we use a frontier model (Gemini) as the teacher to generate thousands of expert-quality labels, then train our own model to reproduce and internalize that expertise.
 
@@ -140,19 +212,19 @@ This is knowledge distillation: we use a frontier model (Gemini) as the teacher 
 
 ### Training Architecture
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| **Base model** | Qwen3-VL-32B-Instruct | Best open-source VLM at 32B scale with native image understanding |
-| **Adaptation method** | LoRA (rank 256, alpha 512) | Parameter-efficient fine-tuning -- adapts ~1% of parameters while preserving base capabilities |
-| **LoRA dropout** | 0.05 | Regularization to prevent overfitting on ~2,100 training examples |
-| **Vision encoder** | Unfrozen (ViT + aligner) | Allows the model to learn pose-specific visual features rather than relying on generic pre-trained representations |
-| **Hardware** | 8x NVIDIA H200 (141 GB VRAM each) | 1.1 TB total GPU memory enables full model loading with DDP |
-| **Distributed strategy** | PyTorch DDP via `torchrun` | Simple, reliable multi-GPU training without the complexity of DeepSpeed/FSDP |
-| **LR schedule** | Cosine (1e-4 peak, 10% warmup) | Smooth decay produces better final convergence than linear |
-| **Effective batch size** | 64 (2/device x 4 grad accum x 8 GPUs) | Large batch for stable gradient estimates |
-| **Epochs** | 10 | Small dataset needs multiple passes to converge fully |
-| **Validation** | 10% held-out split, evaluated every 25 steps | Early stopping signal to select the best checkpoint |
-| **Framework** | [MS-Swift](https://github.com/modelscope/ms-swift) | Handles Qwen3-VL's multi-modal data format natively |
+| Decision                 | Choice                                             | Rationale                                                                                                          |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Base model**           | Qwen3-VL-32B-Instruct                              | Best open-source VLM at 32B scale with native image understanding                                                  |
+| **Adaptation method**    | LoRA (rank 256, alpha 512)                         | Parameter-efficient fine-tuning -- adapts ~1% of parameters while preserving base capabilities                     |
+| **LoRA dropout**         | 0.05                                               | Regularization to prevent overfitting on ~2,100 training examples                                                  |
+| **Vision encoder**       | Unfrozen (ViT + aligner)                           | Allows the model to learn pose-specific visual features rather than relying on generic pre-trained representations |
+| **Hardware**             | 8x NVIDIA H200 (141 GB VRAM each)                  | 1.1 TB total GPU memory enables full model loading with DDP                                                        |
+| **Distributed strategy** | PyTorch DDP via `torchrun`                         | Simple, reliable multi-GPU training without the complexity of DeepSpeed/FSDP                                       |
+| **LR schedule**          | Cosine (1e-4 peak, 10% warmup)                     | Smooth decay produces better final convergence than linear                                                         |
+| **Effective batch size** | 64 (2/device x 4 grad accum x 8 GPUs)              | Large batch for stable gradient estimates                                                                          |
+| **Epochs**               | 10                                                 | Small dataset needs multiple passes to converge fully                                                              |
+| **Validation**           | 10% held-out split, evaluated every 25 steps       | Early stopping signal to select the best checkpoint                                                                |
+| **Framework**            | [MS-Swift](https://github.com/modelscope/ms-swift) | Handles Qwen3-VL's multi-modal data format natively                                                                |
 
 The LoRA adapter is automatically downloaded locally after training and can optionally be uploaded to Hugging Face Hub. See [`backend/modal_fine_tuning/README.md`](backend/modal_fine_tuning/README.md) for full setup instructions.
 
@@ -165,50 +237,49 @@ The LoRA adapter is automatically downloaded locally after training and can opti
 │   React Native    │  HTTPS  │              Modal (GPU)                  │
 │   (Expo)          │◄───────►│                                           │
 │                   │         │  ┌──────────────┐   ┌──────────────────┐  │
-│  expo-camera      │         │  │ MediaPipe /  │──►│  Qwen3-VL-32B   │  │
+│  expo-camera      │         │  │ MediaPipe /  │──►│  Qwen3-VL-32B    │  │
 │  expo-av          │         │  │ YOLO Pose    │   │  (VLM Reasoning) │  │
 │  react-native-svg │         │  └──────────────┘   └──────────────────┘  │
-│                   │         │                  ┌──────────────────┐      │
-│                   │         │                  │  ElevenLabs TTS  │      │
-└───────────────────┘         │                  └──────────────────┘      │
+│                   │         │                  ┌──────────────────┐     │
+│                   │         │                  │  ElevenLabs TTS  │     │
+└───────────────────┘         │                  └──────────────────┘     │
                               └───────────────────────────────────────────┘
 ```
 
 ### Stack
 
-| Layer | Technology |
-|-------|------------|
-| Client | React Native (Expo 54), TypeScript, React 19 |
-| Navigation | React Navigation 7 (native-stack) |
-| Media | expo-camera, expo-av, react-native-svg |
-| Backend | Modal (Python, serverless GPU) |
-| Pose Detection | MediaPipe / YOLO pose estimation |
-| Vision-Language Model | Qwen3-VL-32B-Instruct via `transformers` |
-| Text-to-Speech | ElevenLabs API |
-| Fine-Tuning | MS-Swift LoRA SFT on 8x H200 GPUs via Modal |
-
+| Layer                 | Technology                                   |
+| --------------------- | -------------------------------------------- |
+| Client                | React Native (Expo 54), TypeScript, React 19 |
+| Navigation            | React Navigation 7 (native-stack)            |
+| Media                 | expo-camera, expo-av, react-native-svg       |
+| Backend               | Modal (Python, serverless GPU)               |
+| Pose Detection        | MediaPipe / YOLO pose estimation             |
+| Vision-Language Model | Qwen3-VL-32B-Instruct via `transformers`     |
+| Text-to-Speech        | ElevenLabs API                               |
+| Fine-Tuning           | MS-Swift LoRA SFT on 8x H200 GPUs via Modal  |
 
 ### Project Structure
 
 ```
-├── App.tsx                        # Entry point & navigation
+├── App.tsx                        # Entry point, navigation stack, dark theme
 ├── app/
 │   ├── screens/
-│   │   ├── OnboardingScreen.tsx   # First-time welcome flow
-│   │   ├── HomeScreen.tsx         # Goal list and start recording
-│   │   ├── RecordingScreen.tsx    # Camera capture with 5s limit
-│   │   ├── AnalyzingScreen.tsx    # Loading state during backend call
-│   │   ├── PlaybackScreen.tsx     # Video + SVG overlay + voice feedback
-│   │   ├── CompleteScreen.tsx     # Progress score and retry
-│   │   └── GoalDetailScreen.tsx   # Goal detail and session history
+│   │   ├── OnboardingScreen.tsx   # First-time account creation (name + email)
+│   │   ├── HomeScreen.tsx         # Dashboard: activity/voice selection, goals, start recording
+│   │   ├── RecordingScreen.tsx    # Camera capture with 3s countdown + 5s recording limit
+│   │   ├── AnalyzingScreen.tsx    # 7-stage animated progress during backend analysis
+│   │   ├── PlaybackScreen.tsx     # Video + timed coaching overlays + voice narration
+│   │   ├── CompleteScreen.tsx     # Grade pill, score bar, severity-tabbed feedback cards
+│   │   └── GoalDetailScreen.tsx   # Progression chart, session history, stats
 │   ├── components/
-│   │   └── SVGOverlay.tsx         # Drawing engine for visual feedback
+│   │   └── SVGOverlay.tsx         # Renders angle corrections, position markers, path traces
 │   ├── services/
 │   │   ├── api.ts                 # Modal API client with mock fallback
-│   │   ├── accountStore.ts        # User account persistence
-│   │   └── goalStore.ts           # Goal tracking persistence
+│   │   ├── accountStore.ts        # AsyncStorage-backed user account persistence
+│   │   └── goalStore.ts           # AsyncStorage-backed goal & session tracking
 │   ├── styles/
-│   │   └── theme.ts               # Design tokens and shared styles
+│   │   └── theme.ts               # Dark theme tokens: colors, spacing, typography
 │   └── types/
 │       └── index.ts               # TypeScript type definitions
 ├── backend/
