@@ -120,6 +120,7 @@ export default function AnalyzingScreen() {
                             data: data as AnalysisResponse,
                             activityType,
                             goalId,
+                            voiceId,
                         });
                     }
                 }, 350);

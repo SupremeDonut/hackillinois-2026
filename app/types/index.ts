@@ -41,10 +41,18 @@ export interface FeedbackPoint {
             end: [number, number];
             color: string;
             label?: string;
+            is_correction?: boolean;
+            body_part?: string;
         }>;
         path_points?: Array<[number, number]>;
+        correction_annotations?: Array<{
+            pivot: [number, number];
+            body_part: string;
+            angle_deg: number;
+        }>;
     } | null;
     audio_url: string;
+    severity?: string;
 }
 
 export interface AnalysisResponse {
@@ -79,11 +87,13 @@ export type RootStackParamList = {
         data: AnalysisResponse;
         activityType: ActivityType | string;
         goalId?: string;
+        voiceId?: string;
     };
     Complete: {
         data: AnalysisResponse;
         activityType: ActivityType | string;
         goalId?: string;
+        voiceId?: string;
     };
     GoalDetail: { goalId: string };
 };

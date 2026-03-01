@@ -29,7 +29,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 export default function CompleteScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<CompleteRouteProp>();
-    const { data, activityType, goalId } = route.params;
+    const { data, activityType, goalId, voiceId } = route.params;
     const [activeTab, setActiveTab] = useState<SeverityTab>('major');
     
     // Audio playback state
@@ -265,7 +265,7 @@ export default function CompleteScreen() {
                 {/* ── Actions ── */}
                 <TouchableOpacity
                     style={S.primaryBtn}
-                    onPress={() => navigation.navigate('Recording', { activityType, previousData: data })}
+                    onPress={() => navigation.navigate('Recording', { activityType, previousData: data, voiceId: voiceId ?? 's3TPKV1kjDlVtZbl4Ksh' })}
                     activeOpacity={0.85}
                 >
                     <Text style={S.primaryBtnText}>Try Again  →</Text>

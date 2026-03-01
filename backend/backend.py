@@ -577,8 +577,9 @@ VISUAL RULES: Backend draws skeleton automatically. Always specify LEFT/RIGHT bo
 
             prompt += """
 === OUTPUT (JSON only, no markdown) ===
-Return 1-10 feedback_points grouped by severity. Always specify LEFT/RIGHT body parts. Include positive_note.
+Return 1-5 feedback_points grouped by severity. Always specify LEFT/RIGHT body parts. Include positive_note.
 *** CRITICAL: EVERY feedback_point MUST include "severity" field with EXACTLY one of: "major", "intermediate", or "minor" ***
+*** CRITICAL: DO NOT SAY THE TIMESTAMP IN THE FEEDBACK SUCH AS "AT 0.3S" or "AT 1S" ***
 Prioritize: most major issues first, then intermediate, then minor.
 Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"mistake_timestamp_ms":1200,"severity":"major","coaching_script":"Here, raise your LEFT elbow higher.","visuals":{"overlay_type":"ANGLE_CORRECTION","focus_point":{"x":0.5,"y":0.5},"vectors":[{"start":[0.5,0.5],"end":[0.6,0.6],"color":"red","label":"Current"},{"start":[0.5,0.5],"end":[0.4,0.4],"color":"green","label":"Target"}],"path_points":null}},{"mistake_timestamp_ms":2400,"severity":"intermediate","coaching_script":"Keep your head more neutral.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.5,"y":0.2},"vectors":[],"path_points":null}},{"mistake_timestamp_ms":3000,"severity":"minor","coaching_script":"Slight RIGHT shoulder adjustment needed.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.65,"y":0.35},"vectors":[],"path_points":null}}]}
 """
@@ -703,11 +704,11 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
             result = json_lib.loads(clean_json_str)
 
             # Cap feedback points at 10
-            if len(result.get("feedback_points", [])) > 10:
+            if len(result.get("feedback_points", [])) > 5:
                 print(
-                    f"[Analyze] Capping feedback_points from {len(result['feedback_points'])} to 10 (before severity split)"
+                    f"[Analyze] Capping feedback_points from {len(result['feedback_points'])} to 5 (before severity split)"
                 )
-                result["feedback_points"] = result["feedback_points"][:10]
+                result["feedback_points"] = result["feedback_points"][:5]
 
             # Ensure all feedback points have severity - default to "intermediate" if missing
             missing_severity_count = 0
@@ -1218,7 +1219,10 @@ async def analyze(request: Request):
             duration_seconds = total_frames / fps
             cap.release()
 
-            # Sample every 6th frame (at 30fps = 5 samples/sec, plenty for pose analysis)
+            # Cap effective fps for sampling at 16 to reduce YOLO calls and prompt size
+            fps = min(fps, 16.0)
+
+            # Sample every 6th frame (at 16fps cap = ~2.7 samples/sec, sufficient for pose analysis)
             # Limit to first 5 seconds to keep LLM prompt manageable
             max_duration = min(5.0, duration_seconds)
             max_frame = int(max_duration * fps)
@@ -1228,7 +1232,7 @@ async def analyze(request: Request):
                 int((frame_idx / fps) * 1000) for frame_idx in range(0, max_frame, 6)
             ]
             print(
-                f"[Endpoint] Video: {fps:.2f} fps, {total_frames} frames total, {duration_seconds:.1f}s duration"
+                f"[Endpoint] Video: {fps:.2f} fps (capped to 16), {total_frames} frames total, {duration_seconds:.1f}s duration"
             )
             print(
                 f"[Endpoint] 🦴 Extracting pose data from every 6th frame for first {max_duration:.1f}s"

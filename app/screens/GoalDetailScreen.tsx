@@ -194,6 +194,7 @@ export default function GoalDetailScreen() {
             activityType: goal.activityType,
             description: goal.name,
             goalId: goal.id,
+            voiceId: 's3TPKV1kjDlVtZbl4Ksh', // default: Peter
         });
     };
 
