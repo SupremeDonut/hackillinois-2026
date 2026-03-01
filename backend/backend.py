@@ -12,6 +12,8 @@ import modal
 import tempfile
 
 MODEL_ID = "Qwen/Qwen3-VL-32B-Instruct"
+ADAPTER_REPO_ID = "Playbird12/motioncoach-qwen3vl-32b-lora"
+ADAPTER_CACHE_DIR = "/root/adapter_cache"
 MODEL_CACHE_DIR = "/root/model_cache"
 
 
@@ -28,6 +30,24 @@ def download_model_weights():
         # skip old-format weights, use safetensors only
         ignore_patterns=["*.pt", "*.bin"],
     )
+
+
+def download_adapter_weights():
+    """Runs during image build to bake LoRA adapter into the image layer."""
+    import os
+    from huggingface_hub import snapshot_download
+
+    token = os.environ.get("HF_TOKEN")
+    try:
+        snapshot_download(
+            ADAPTER_REPO_ID,
+            local_dir=ADAPTER_CACHE_DIR,
+            token=token,
+        )
+        print(f"[Build] LoRA adapter downloaded to {ADAPTER_CACHE_DIR}")
+    except Exception as e:
+        print(f"[Build] WARNING: Could not download LoRA adapter ({e}). "
+              "Will fall back to base model at runtime.")
 
 
 # ==============================================================================
@@ -331,10 +351,15 @@ video_image = (
         "huggingface_hub",
         "ultralytics",
         "opencv-python-headless",
+        "peft",
     )
     # Bake model weights into the image at build time (runs once, cached forever)
     .run_function(
         download_model_weights,
+        secrets=[modal.Secret.from_name("huggingface-secret")],
+    )
+    .run_function(
+        download_adapter_weights,
         secrets=[modal.Secret.from_name("huggingface-secret")],
     )
 )
@@ -445,15 +470,31 @@ class VideoAnalyzer:
         # instead of reloading the 32B model from disk (saves ~60-90s per cold start).
         from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
         import time as _t
+        import os
 
-        print("[ModelLoad] Loading Qwen3-VL-32B into GPU memory...")
+        print("[ModelLoad] Loading Qwen3-VL-32B base into GPU memory...")
         t0 = _t.time()
-        self.raw_model = Qwen3VLForConditionalGeneration.from_pretrained(
+        base_model = Qwen3VLForConditionalGeneration.from_pretrained(
             MODEL_CACHE_DIR, torch_dtype="auto", device_map="auto"
         )
+        print(f"[ModelLoad] Base loaded in {_t.time() - t0:.1f}s")
+
+        if os.path.isdir(ADAPTER_CACHE_DIR) and os.listdir(ADAPTER_CACHE_DIR):
+            try:
+                from peft import PeftModel
+                t1 = _t.time()
+                self.raw_model = PeftModel.from_pretrained(base_model, ADAPTER_CACHE_DIR)
+                print(f"[ModelLoad] LoRA adapter applied in {_t.time() - t1:.1f}s")
+            except Exception as e:
+                print(f"[ModelLoad] WARNING: LoRA load failed ({e}), using base model")
+                self.raw_model = base_model
+        else:
+            print("[ModelLoad] No LoRA adapter found, using base model")
+            self.raw_model = base_model
+
         self.processor = AutoProcessor.from_pretrained(MODEL_CACHE_DIR)
         print(
-            f"[ModelLoad] ✅ Model loaded in {_t.time() - t0:.1f}s — GPU snapshot will be taken"
+            f"[ModelLoad] ✅ Model ready in {_t.time() - t0:.1f}s — GPU snapshot will be taken"
         )
 
     @modal.method()

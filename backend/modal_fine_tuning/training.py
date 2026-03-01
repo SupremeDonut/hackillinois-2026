@@ -73,6 +73,19 @@ def train(num_examples: int = 0):
                             break
             all_rows.append(row)
 
+    max_tok = 4096
+    max_chars = max_tok * 3  # conservative ~3 chars/token for mixed content
+    before = len(all_rows)
+    all_rows = [
+        row for row in all_rows
+        if sum(
+            len(m.get("content", "")) if isinstance(m.get("content"), str)
+            else sum(len(p.get("text", "")) for p in m["content"] if isinstance(p, dict))
+            for m in row.get("messages", [])
+        ) <= max_chars
+    ]
+    print(f"Filtered: {before} → {len(all_rows)} rows (dropped {before - len(all_rows)} rows exceeding ~{max_tok} tokens)")
+
     random.seed(42)
     random.shuffle(all_rows)
     val_size = max(50, len(all_rows) // 10)
@@ -158,6 +171,18 @@ def train(num_examples: int = 0):
     token = os.environ.get("HF_TOKEN")
     if repo_id and token:
         try:
+            readme_path = os.path.join(latest_ckpt_path, "README.md")
+            if os.path.exists(readme_path):
+                with open(readme_path) as f:
+                    readme = f.read()
+                readme = re.sub(
+                    r"base_model:\s*.+",
+                    "base_model: Qwen/Qwen3-VL-32B-Instruct",
+                    readme,
+                )
+                with open(readme_path, "w") as f:
+                    f.write(readme)
+
             from huggingface_hub import HfApi
             api = HfApi(token=token)
             api.create_repo(repo_id=repo_id, private=True, exist_ok=True)
@@ -194,6 +219,78 @@ def package_checkpoint(ckpt_path: str) -> bytes:
     data = buf.getvalue()
     print(f"Compressed: {len(data) / (1024*1024):.0f} MB")
     return data
+
+
+upload_image = modal.Image.debian_slim(python_version="3.11").pip_install("huggingface_hub")
+
+
+@app.function(
+    image=upload_image,
+    volumes={"/data": vol},
+    secrets=[modal.Secret.from_name("huggingface-secret")],
+    timeout=1800,
+)
+def _upload_to_hf(ckpt_path: str, repo_id: str):
+    import os, shutil, tempfile
+    from huggingface_hub import HfApi
+
+    KEEP = {"adapter_model.safetensors", "adapter_config.json", "additional_config.json"}
+
+    staging = tempfile.mkdtemp()
+    for fn in os.listdir(ckpt_path):
+        if fn in KEEP:
+            src = os.path.join(ckpt_path, fn)
+            shutil.copy2(src, os.path.join(staging, fn))
+
+    readme = f"""\
+---
+base_model: Qwen/Qwen3-VL-32B-Instruct
+tags:
+  - peft
+  - lora
+  - qwen3-vl
+library_name: peft
+---
+
+# MotionCoach — Qwen3-VL-32B LoRA Adapter
+
+Fine-tuned LoRA adapter for pose/form correction on exercise images.
+
+- **Base model:** [Qwen/Qwen3-VL-32B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct)
+- **Checkpoint:** {os.path.basename(ckpt_path)}
+"""
+    with open(os.path.join(staging, "README.md"), "w") as f:
+        f.write(readme)
+
+    files = []
+    for fn in sorted(os.listdir(staging)):
+        size = os.path.getsize(os.path.join(staging, fn)) / (1024 * 1024)
+        files.append((fn, size))
+    print(f"Uploading {len(files)} files from {ckpt_path}:")
+    for fn, size in files:
+        print(f"  {fn}  ({size:.1f} MB)")
+
+    token = os.environ["HF_TOKEN"]
+    api = HfApi(token=token)
+    api.create_repo(repo_id=repo_id, private=True, exist_ok=True)
+    api.upload_folder(
+        folder_path=staging,
+        repo_id=repo_id,
+        commit_message=f"Upload LoRA adapter from {os.path.basename(ckpt_path)}",
+    )
+    shutil.rmtree(staging)
+    print(f"\nUploaded: https://huggingface.co/{repo_id}")
+
+
+@app.local_entrypoint(name="upload_checkpoint")
+def upload_checkpoint():
+    import os
+
+    ckpt_path = os.environ.get("CKPT_PATH", "/data/checkpoints/v18-20260301-051939/checkpoint-100")
+    repo_id = os.environ.get("HF_ADAPTER_REPO_ID", "Playbird12/motioncoach-qwen3vl-32b-lora").strip()
+
+    print(f"Uploading {ckpt_path} → https://huggingface.co/{repo_id}")
+    _upload_to_hf.remote(ckpt_path, repo_id)
 
 
 @app.local_entrypoint()
