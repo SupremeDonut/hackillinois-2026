@@ -89,7 +89,6 @@ export const uploadVideo = async (
         }
 
         const json = (await response.json()) as AnalysisResponse;
-        json.feedback_points.shift();
         return json;
     } catch (error) {
         console.error("[API] Request failed.", error);
