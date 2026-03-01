@@ -249,6 +249,8 @@ def snap_correction_vectors_to_skeleton(
             "end": list(adjacent_coords),
             "color": "#FF3B30",
             "label": "Current",
+            "is_correction": True,
+            "body_part": kp_name.replace("_", " ").title(),
         })
         
         # Vector 2: Target position (GREEN) - shows what SHOULD BE
@@ -270,9 +272,21 @@ def snap_correction_vectors_to_skeleton(
             "end": [target_x, target_y],
             "color": "#34C759",
             "label": "Target",
+            "is_correction": True,
+            "body_part": kp_name.replace("_", " ").title(),
+        })
+
+        # Store the correction angle in the visuals so the frontend can label it
+        # The angle is always 30 degrees (our rotation hint constant)
+        if "correction_annotations" not in visuals:
+            visuals["correction_annotations"] = []
+        visuals["correction_annotations"].append({
+            "pivot": list(kp_coords),
+            "body_part": kp_name.replace("_", " ").title(),
+            "angle_deg": 30,
         })
         
-        print(f"[Snap] ✓ Generated correction pair for {kp_name} → {adjacent_name}")
+        print(f"[Snap] ✓ Generated correction pair for {kp_name} → {adjacent_name} (30° correction hint)")
 
     # REPLACE all LLM vectors with our precisely-generated ones
     visuals["vectors"] = snapped_vectors
@@ -481,18 +495,16 @@ This is NOT the user's first attempt. They are retrying the same movement to imp
 
 INSTRUCTIONS FOR RETRY:
 - Compare this attempt directly to the previous one above
-- Compute improvement_delta: positive number = they improved, negative = they regressed, 0 = no change
 - If they fixed a previous mistake, acknowledge it enthusiastically (e.g. "Great job fixing your elbow angle!")
 - Do NOT repeat feedback for issues they already corrected
 - Focus new feedback on the NEXT most impactful improvement they should make
-- Adjust progress_score relative to their previous score
+- Do NOT include progress_score or improvement_delta — the backend computes these automatically
 """
             else:
                 prompt += """\n=== NEW SESSION — FIRST ATTEMPT ===
 This is the user's first attempt at this movement. There is no previous session to compare to.
-- Set improvement_delta to null (no previous baseline)
-- Give an honest baseline progress_score (0-100)
 - Be encouraging: this is their starting point, not a judgment
+- Do NOT include progress_score or improvement_delta — the backend computes these automatically
 """
 
             # Add detected pose skeleton information
@@ -522,10 +534,10 @@ VISUAL RULES: Backend draws skeleton automatically. Always specify LEFT/RIGHT bo
 
             prompt += """
 === OUTPUT (JSON only, no markdown) ===
-Return 1-10 feedback_points grouped by severity. Always specify LEFT/RIGHT body parts. Include positive_note and progress_score (0-100).
+Return 1-10 feedback_points grouped by severity. Always specify LEFT/RIGHT body parts. Include positive_note.
 *** CRITICAL: EVERY feedback_point MUST include "severity" field with EXACTLY one of: "major", "intermediate", or "minor" ***
 Prioritize: most major issues first, then intermediate, then minor.
-Example: {"status":"success","positive_note":"Good form!","progress_score":60,"improvement_delta":null,"feedback_points":[{"mistake_timestamp_ms":1200,"severity":"major","coaching_script":"At 1.2s, raise your LEFT elbow higher — critical form issue.","visuals":{"overlay_type":"ANGLE_CORRECTION","focus_point":{"x":0.5,"y":0.5},"vectors":[{"start":[0.5,0.5],"end":[0.6,0.6],"color":"red","label":"Current"},{"start":[0.5,0.5],"end":[0.4,0.4],"color":"green","label":"Target"}],"path_points":null}},{"mistake_timestamp_ms":2400,"severity":"intermediate","coaching_script":"At 2.4s, keep your head more neutral.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.5,"y":0.2},"vectors":[],"path_points":null}},{"mistake_timestamp_ms":3000,"severity":"minor","coaching_script":"At 3.0s, slight RIGHT shoulder adjustment needed.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.65,"y":0.35},"vectors":[],"path_points":null}}]}
+Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"mistake_timestamp_ms":1200,"severity":"major","coaching_script":"Here, raise your LEFT elbow higher.","visuals":{"overlay_type":"ANGLE_CORRECTION","focus_point":{"x":0.5,"y":0.5},"vectors":[{"start":[0.5,0.5],"end":[0.6,0.6],"color":"red","label":"Current"},{"start":[0.5,0.5],"end":[0.4,0.4],"color":"green","label":"Target"}],"path_points":null}},{"mistake_timestamp_ms":2400,"severity":"intermediate","coaching_script":"Keep your head more neutral.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.5,"y":0.2},"vectors":[],"path_points":null}},{"mistake_timestamp_ms":3000,"severity":"minor","coaching_script":"Slight RIGHT shoulder adjustment needed.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.65,"y":0.35},"vectors":[],"path_points":null}}]}
 """
 
             print(f"\n[Analyze] 📝 Prompt constructed ({len(prompt):,} chars)")
@@ -673,6 +685,46 @@ Example: {"status":"success","positive_note":"Good form!","progress_score":60,"i
                 key=lambda fp: fp.get("mistake_timestamp_ms", 0),
             )
             print(f"[Analyze] ✓ Sorted {len(result['feedback_points'])} feedback points by timestamp (ascending)")
+
+            # ── Deterministic score formula ─────────────────────────────────────
+            #   progress_score = 100 - (n_major×12) - (n_intermediate×5) - (n_minor×2)
+            #   clamped to [10, 100]
+            #   improvement_delta = current_score - previous_score  (null on first session)
+            SEVERITY_PENALTIES = {"major": 12, "intermediate": 5, "minor": 2}
+            fps = result.get("feedback_points", [])
+            n_major        = sum(1 for fp in fps if fp.get("severity") == "major")
+            n_intermediate = sum(1 for fp in fps if fp.get("severity") == "intermediate")
+            n_minor        = sum(1 for fp in fps if fp.get("severity") == "minor")
+            raw_score = (
+                100
+                - n_major        * SEVERITY_PENALTIES["major"]
+                - n_intermediate * SEVERITY_PENALTIES["intermediate"]
+                - n_minor        * SEVERITY_PENALTIES["minor"]
+            )
+            computed_score = max(10, min(100, raw_score))
+
+            improvement_delta = None
+            prev_score = None
+            if previous_analysis:
+                try:
+                    prev = json_lib.loads(previous_analysis)
+                    prev_score = prev.get("progress_score")
+                    if prev_score is not None:
+                        improvement_delta = computed_score - int(prev_score)
+                except Exception:
+                    pass
+
+            result["progress_score"] = computed_score
+            result["improvement_delta"] = improvement_delta
+            print(
+                f"[Analyze] 📐 Score: 100 - {n_major}×12 - {n_intermediate}×5 - {n_minor}×2"
+                f" = {raw_score} → clamped → {computed_score}"
+            )
+            if improvement_delta is not None:
+                print(f"[Analyze] 📈 improvement_delta = {improvement_delta:+d} (prev={prev_score}, curr={computed_score})")
+            else:
+                print(f"[Analyze] 📈 improvement_delta = null (first session)")
+            # ───────────────────────────────────────────────────────────────────
 
             t_end = _time.time()
             print(f"\n[Analyze] 📊 Parsed result summary:")
@@ -959,13 +1011,13 @@ Example: {"status":"success","positive_note":"Good form!","progress_score":60,"i
                                     f"[Pose] 🎯 Critiqued keypoint indices: {sorted(critiqued_kp_indices)}"
                                 )
                                 # Build a set of (kp_a, kp_b) pairs that should be red
-                                # BOTH endpoints must be in the critiqued set to avoid color bleed
+                                # EITHER endpoint touching a critiqued keypoint turns the segment red
                                 critiqued_segments = set()
                                 for a, b in COCO_SKELETON:
                                     i_a, i_b = a - 1, b - 1  # 0-indexed
                                     if (
                                         i_a in critiqued_kp_indices
-                                        and i_b in critiqued_kp_indices
+                                        or i_b in critiqued_kp_indices
                                     ):
                                         critiqued_segments.add((i_a, i_b))
 

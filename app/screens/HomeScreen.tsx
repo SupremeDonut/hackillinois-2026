@@ -9,6 +9,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Goal } from '../types';
 import { Colors, Spacing, Radius } from '../styles/theme';
 import { loadGoals, createGoal } from '../services/goalStore';
+import { getAccount } from '../services/accountStore';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -28,12 +29,14 @@ export default function HomeScreen() {
     const [goals, setGoals] = useState<Goal[]>([]);
     const [newGoalText, setNewGoalText] = useState('');
     const [addingGoal, setAddingGoal] = useState(false);
+    const [displayName, setDisplayName] = useState('');
     const isReady = activityType.trim().length > 0;
 
-    // Reload goals whenever screen is focused (e.g. coming back from GoalDetail)
+    // Reload goals and account whenever screen is focused
     useFocusEffect(
         useCallback(() => {
             loadGoals().then(setGoals);
+            getAccount().then((a) => { if (a) setDisplayName(a.displayName); });
         }, []),
     );
 
@@ -114,6 +117,9 @@ export default function HomeScreen() {
                     </Svg>
                     <Text style={S.appName}>Morphi</Text>
                     <Text style={S.tagline}>Learning for every hobby.</Text>
+                    {displayName ? (
+                        <Text style={S.greeting}>Hi, {displayName}</Text>
+                    ) : null}
                 </View>
 
                 {/* ── Input Card ── */}
@@ -287,6 +293,12 @@ const S = StyleSheet.create({
     tagline: {
         fontSize: 14,
         color: Colors.textSecondary,
+    },
+    greeting: {
+        fontSize: 15,
+        color: Colors.primary,
+        fontWeight: '700',
+        marginTop: 10,
     },
     card: {
         backgroundColor: Colors.surface,

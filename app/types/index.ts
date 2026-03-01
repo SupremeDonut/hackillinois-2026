@@ -1,5 +1,13 @@
 export type ActivityType = 'basketball_shot' | 'golf_swing' | 'tennis_serve' | 'other';
 
+// ─── Account ─────────────────────────────────────────────────────────────────
+
+export interface Account {
+    displayName: string;
+    email: string;
+    createdAt: string;
+}
+
 // ─── Goal / Progression ───────────────────────────────────────────────────────
 
 export interface GoalRun {
@@ -45,6 +53,7 @@ export interface AnalysisResponse {
 }
 
 export type RootStackParamList = {
+    Onboarding: undefined;
     Home: undefined;
     Recording: { activityType: ActivityType | string; description?: string; previousData?: AnalysisResponse; goalId?: string };
     Analyzing: { videoUri: string; activityType: ActivityType | string; description: string; previousData?: AnalysisResponse; goalId?: string };

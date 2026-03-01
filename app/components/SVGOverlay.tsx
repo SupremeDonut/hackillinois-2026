@@ -42,6 +42,8 @@ export interface OverlayVector {
   end: [number, number];
   color: string;
   label?: string;
+  is_correction?: boolean;
+  body_part?: string;
 }
 
 export interface OverlayFocusPoint {
@@ -51,11 +53,18 @@ export interface OverlayFocusPoint {
 
 export type OverlayType = 'ANGLE_CORRECTION' | 'POSITION_MARKER' | 'PATH_TRACE';
 
+export interface CorrectionAnnotation {
+  pivot: [number, number];
+  body_part: string;
+  angle_deg: number;
+}
+
 export interface OverlayData {
   overlay_type?: OverlayType | string;
   focus_point?: OverlayFocusPoint;
   vectors?: OverlayVector[];
   path_points?: Array<[number, number]>;
+  correction_annotations?: CorrectionAnnotation[];
 }
 
 export interface VideoLayout {
@@ -115,8 +124,8 @@ export default function SVGOverlay({
     const screenWidth = Dimensions.get('window').width;
     const fallbackHeight = screenWidth * (16 / 9);
 
-    const width = videoLayout?.width ?? screenWidth;
-    const height = videoLayout?.height ?? fallbackHeight;
+    const width = videoLayout?.width || screenWidth;
+    const height = videoLayout?.height || fallbackHeight;
 
     const vectors = data?.vectors ?? [];
     const overlayType = data?.overlay_type ?? 'ANGLE_CORRECTION';
@@ -133,9 +142,12 @@ export default function SVGOverlay({
               x2={toPxX(vector.end[0], width)}
               y2={toPxY(vector.end[1], height)}
               stroke={vector.color}
-              strokeWidth={4}
+              strokeWidth={vector.is_correction ? 5 : 4}
+              strokeLinecap="round"
             />
-            {vector.label ? (
+            {/* Only show Current/Target label for non-correction vectors
+                (correction vectors get labeled via the arc annotation) */}
+            {vector.label && !vector.is_correction ? (
               <SvgText
                 x={toPxX(vector.end[0], width) + 6}
                 y={toPxY(vector.end[1], height) - 6}
@@ -152,24 +164,111 @@ export default function SVGOverlay({
     );
 
     const renderAngleArc = () => {
-      if (vectors.length < 2) return null;
+      // Find correction pairs: RED (is_correction + color #FF3B30) and GREEN (is_correction + color #34C759)
+      // that share the same pivot (start point).
+      const correctionRed = vectors.filter(
+        (v) => v.is_correction && v.color === '#FF3B30'
+      );
 
-      const v1 = vectors[0];
-      const v2 = vectors[1];
-      const pivot01 = v1.start;
-
-      const cx = toPxX(pivot01[0], width);
-      const cy = toPxY(pivot01[1], height);
-      const a1 = Math.atan2(v1.end[1] - pivot01[1], v1.end[0] - pivot01[0]);
-      const a2 = Math.atan2(v2.end[1] - pivot01[1], v2.end[0] - pivot01[0]);
-
-      const r = Math.max(18, Math.min(width, height) * 0.08);
-      const d = arcPath(cx, cy, r, a1, a2);
+      if (correctionRed.length === 0) {
+        // Fallback: use first two vectors if no tagged corrections present
+        if (vectors.length < 2) return null;
+        const v1 = vectors[0];
+        const v2 = vectors[1];
+        const cx = toPxX(v1.start[0], width);
+        const cy = toPxY(v1.start[1], height);
+        const a1 = Math.atan2(v1.end[1] - v1.start[1], v1.end[0] - v1.start[0]);
+        const a2 = Math.atan2(v2.end[1] - v2.start[1], v2.end[0] - v2.start[0]);
+        const r = Math.max(18, Math.min(width, height) * 0.08);
+        return (
+          <>
+            <Circle cx={cx} cy={cy} r={5} fill="#fff" opacity={0.9} />
+            <Path d={arcPath(cx, cy, r, a1, a2)} stroke="#fff" strokeWidth={3} fill="none" opacity={0.9} />
+          </>
+        );
+      }
 
       return (
         <>
-          <Circle cx={cx} cy={cy} r={5} fill="#fff" opacity={0.9} />
-          <Path d={d} stroke="#fff" strokeWidth={3} fill="none" opacity={0.9} />
+          {correctionRed.map((redVec, i) => {
+            // Find the matching green vector at the same pivot
+            const pivot = redVec.start;
+            const greenVec = vectors.find(
+              (v) =>
+                v.is_correction &&
+                v.color === '#34C759' &&
+                Math.abs(v.start[0] - pivot[0]) < 0.005 &&
+                Math.abs(v.start[1] - pivot[1]) < 0.005
+            );
+            if (!greenVec) return null;
+
+            const cx = toPxX(pivot[0], width);
+            const cy = toPxY(pivot[1], height);
+
+            // Angles from pivot to each arrow tip (using normalised 0-1 coordinates)
+            const a1 = Math.atan2(
+              redVec.end[1] - pivot[1],
+              redVec.end[0] - pivot[0]
+            );
+            const a2 = Math.atan2(
+              greenVec.end[1] - pivot[1],
+              greenVec.end[0] - pivot[0]
+            );
+
+            const r = Math.max(20, Math.min(width, height) * 0.09);
+            const arcD = arcPath(cx, cy, r, a1, a2);
+
+            // Angle label position: midpoint of the arc
+            const dAngle = shortestDelta(a1, a2);
+            const midAngle = a1 + dAngle / 2;
+            const labelR = r + 14;
+            const labelX = cx + labelR * Math.cos(midAngle);
+            const labelY = cy + labelR * Math.sin(midAngle);
+
+            // Degrees to display (always the absolute sweep)
+            const angleDeg = Math.round(Math.abs(dAngle) * (180 / Math.PI));
+
+            // Body part label — slightly above the pivot
+            const bodyPart = redVec.body_part ?? '';
+
+            return (
+              <React.Fragment key={i}>
+                {/* Pivot dot */}
+                <Circle cx={cx} cy={cy} r={6} fill="#fff" opacity={0.95} />
+
+                {/* Arc */}
+                <Path d={arcD} stroke="#FFD60A" strokeWidth={3} fill="none" opacity={0.95}
+                  strokeLinecap="round" />
+
+                {/* Degree label at arc midpoint */}
+                <SvgText
+                  x={labelX}
+                  y={labelY + 5}
+                  fill="#FFD60A"
+                  fontSize={13}
+                  fontWeight="800"
+                  textAnchor="middle"
+                >
+                  {angleDeg}°
+                </SvgText>
+
+                {/* Body part label above pivot */}
+                {bodyPart ? (
+                  <SvgText
+                    x={cx}
+                    y={cy - 14}
+                    fill="#FFFFFF"
+                    fontSize={12}
+                    fontWeight="700"
+                    textAnchor="middle"
+                    opacity={0.95}
+                  >
+                    {bodyPart}
+                  </SvgText>
+                ) : null}
+              </React.Fragment>
+            );
+          })}
         </>
       );
     };
@@ -201,31 +300,34 @@ export default function SVGOverlay({
     const renderOverlay = () => {
       // Always render vectors (skeleton + corrections) if they exist
       const vectorElements = vectors.length > 0 ? renderVectors() : null;
-      
-      // Add type-specific overlay on top
+      // Always render correction pair arcs + labels for any overlay type
+      const arcElements = renderAngleArc();
+
       if (overlayType === 'POSITION_MARKER') {
         return (
           <>
             {vectorElements}
+            {arcElements}
             {renderPositionMarker()}
           </>
         );
       }
-      
+
       if (overlayType === 'PATH_TRACE') {
         return (
           <>
             {vectorElements}
+            {arcElements}
             {renderPathTrace()}
           </>
         );
       }
-      
+
       // default ANGLE_CORRECTION
       return (
         <>
           {vectorElements}
-          {renderAngleArc()}
+          {arcElements}
         </>
       );
     };
