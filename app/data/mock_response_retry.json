@@ -1,0 +1,23 @@
+{
+  "status": "success",
+  "positive_note": "Nice improvement! Your elbow position is much better this time.",
+  "progress_score": 78,
+  "improvement_delta": 13,
+  "feedback_points": [
+    {
+      "mistake_timestamp_ms": 1500,
+      "severity": "intermediate",
+      "coaching_script": "Your LEFT shoulder could drop slightly for a more natural release.",
+      "visuals": {
+        "overlay_type": "ANGLE_CORRECTION",
+        "focus_point": {"x": 0.38, "y": 0.35},
+        "vectors": [
+          {"start": [0.38, 0.35], "end": [0.33, 0.42], "color": "red", "label": "Current"},
+          {"start": [0.38, 0.35], "end": [0.35, 0.3], "color": "green", "label": "Target"}
+        ],
+        "path_points": null
+      },
+      "audio_url": ""
+    }
+  ]
+}

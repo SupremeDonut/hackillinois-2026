@@ -24,7 +24,7 @@ Under the hood, this is a full-stack ML system:
 
 - A **React Native (Expo)** frontend handles video capture, SVG overlay rendering, and voice playback.
 - A **serverless GPU backend on Modal** runs pose estimation (YOLO26x-pose) and a **custom fine-tuned Qwen3-VL-32B** vision-language model to generate spatially-grounded coaching feedback.
-- We built an **automated data curation pipeline** that distills coaching knowledge from Gemini 3.0 Flash into ~2,300 labeled examples, then trained a **LoRA adapter on 8x H200 GPUs** to specialize the model for biomechanical correction.
+- We built an **automated data curation pipeline** that distills coaching knowledge from Gemini 3.0 Flash into ~2,300 labeled examples, then trained a [**LoRA adapter**](https://huggingface.co/Playbird12/motioncoach-qwen3vl-32b-lora) **on 8x H200 GPUs** to specialize the model for biomechanical correction.
 - Feedback is structured as machine-readable JSON with `ANGLE_CORRECTION` vectors tied to YOLO keypoints, enabling the app to render precise visual overlays (current joint angle vs. target) directly from model output.
 - **ElevenLabs TTS** converts the coaching text into natural voice narration for a hands-free experience.
 
@@ -255,7 +255,7 @@ The LoRA adapter is automatically downloaded locally after training and can opti
 | Media                 | expo-camera, expo-av, react-native-svg       |
 | Backend               | Modal (Python, serverless GPU)               |
 | Pose Detection        | MediaPipe / YOLO pose estimation             |
-| Vision-Language Model | Qwen3-VL-32B-Instruct via `transformers`     |
+| Vision-Language Model | Qwen3-VL-32B-Instruct via vLLM ([LoRA adapter](https://huggingface.co/Playbird12/motioncoach-qwen3vl-32b-lora)) |
 | Text-to-Speech        | ElevenLabs API                               |
 | Fine-Tuning           | MS-Swift LoRA SFT on 8x H200 GPUs via Modal  |
 

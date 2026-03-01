@@ -33,6 +33,7 @@ export interface Goal {
 export interface FeedbackPoint {
     mistake_timestamp_ms: number;
     coaching_script: string;
+    positive_note?: string;
     visuals: {
         overlay_type: "ANGLE_CORRECTION" | "POSITION_MARKER" | "PATH_TRACE";
         focus_point?: { x: number; y: number };

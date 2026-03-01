@@ -11,6 +11,8 @@ except ImportError:
 import modal
 import tempfile
 
+temp_volume = modal.Volume.from_name("video-cache", create_if_missing=True)
+
 MODEL_ID = "Qwen/Qwen3-VL-32B-Instruct"
 ADAPTER_REPO_ID = "Playbird12/motioncoach-qwen3vl-32b-lora"
 ADAPTER_CACHE_DIR = "/root/adapter_cache"
@@ -345,23 +347,22 @@ video_image = (
         "nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04",
         add_python="3.11",
     )
-    .apt_install("git", "libgl1", "libglib2.0-0", "libsm6", "libxext6", "libxrender1")
-    .run_commands(
-        "pip install --upgrade pip",
-        "pip install torch --index-url https://download.pytorch.org/whl/cu121",
-    )
+    .env({
+        "REBUILD": "3",
+        "CC": "gcc",
+        "CUDA_HOME": "/usr/local/cuda",
+        "TORCH_CUDA_ARCH_LIST": "9.0",
+        "VLLM_USE_PRECOMPILED": "1",
+    })
+    .apt_install("git", "build-essential", "libgl1", "libglib2.0-0", "libsm6", "libxext6", "libxrender1")
     .pip_install(
-        "git+https://github.com/huggingface/transformers.git",
-        "accelerate",
+        "vllm",
         "qwen-vl-utils",
         "decord",
-        "torchvision",
         "huggingface_hub",
         "ultralytics",
         "opencv-python-headless",
-        "peft",
     )
-    # Bake model weights into the image at build time (runs once, cached forever)
     .run_function(
         download_model_weights,
         secrets=[modal.Secret.from_name("huggingface-secret")],
@@ -376,7 +377,7 @@ app = modal.App("biomechanics-ai")
 
 
 @app.cls(
-    gpu="B200",
+    gpu="H200:4",
     image=video_image,
     timeout=600,  # Max 10 mins per analysis
     scaledown_window=300,  # Keep container warm for 5 mins (faster subsequent requests)
@@ -388,37 +389,32 @@ app = modal.App("biomechanics-ai")
 class VideoAnalyzer:
     @modal.enter()
     def load_model(self):
-        # Weights are baked into the image at MODEL_CACHE_DIR — no download at runtime.
-        # With enable_memory_snapshot=True, Modal snapshots CUDA GPU state after this
-        # runs the first time — subsequent container starts restore from the snapshot
-        # instead of reloading the 32B model from disk (saves ~60-90s per cold start).
-        from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+        from vllm import LLM, SamplingParams
+        from vllm.lora.request import LoRARequest
         import time as _t
         import os
 
-        print("[ModelLoad] Loading Qwen3-VL-32B base into GPU memory...")
+        print("[ModelLoad] Initializing vLLM with Qwen3-VL-32B + LoRA...")
         t0 = _t.time()
-        base_model = Qwen3VLForConditionalGeneration.from_pretrained(
-            MODEL_CACHE_DIR, torch_dtype="auto", device_map="auto"
+        self.llm = LLM(
+            model=MODEL_CACHE_DIR,
+            tensor_parallel_size=4,
+            max_model_len=65536,
+            gpu_memory_utilization=0.90,
+            enable_lora=True,
+            max_lora_rank=256,
         )
-        print(f"[ModelLoad] Base loaded in {_t.time() - t0:.1f}s")
+        self.sampling_params = SamplingParams(max_tokens=1536)
 
         if os.path.isdir(ADAPTER_CACHE_DIR) and os.listdir(ADAPTER_CACHE_DIR):
-            try:
-                from peft import PeftModel
-                t1 = _t.time()
-                self.raw_model = PeftModel.from_pretrained(base_model, ADAPTER_CACHE_DIR)
-                print(f"[ModelLoad] LoRA adapter applied in {_t.time() - t1:.1f}s")
-            except Exception as e:
-                print(f"[ModelLoad] WARNING: LoRA load failed ({e}), using base model")
-                self.raw_model = base_model
+            self.lora_request = LoRARequest("motioncoach", 1, ADAPTER_CACHE_DIR)
+            print(f"[ModelLoad] LoRA adapter loaded from {ADAPTER_CACHE_DIR}")
         else:
+            self.lora_request = None
             print("[ModelLoad] No LoRA adapter found, using base model")
-            self.raw_model = base_model
 
-        self.processor = AutoProcessor.from_pretrained(MODEL_CACHE_DIR)
         print(
-            f"[ModelLoad] ✅ Model ready in {_t.time() - t0:.1f}s — GPU snapshot will be taken"
+            f"[ModelLoad] vLLM ready in {_t.time() - t0:.1f}s — GPU snapshot will be taken"
         )
 
     @modal.method()
@@ -513,38 +509,35 @@ This is the user's first attempt at this movement. There is no previous session 
             if pose_data and pose_data.get("detected_poses"):
                 prompt += "\n=== DETECTED POSE KEYPOINTS ===\n"
                 available_timestamps = []
-                # Only include every 2nd pose frame to reduce prompt size
                 pose_items = list(pose_data["detected_poses"].items())
                 for idx, (timestamp_ms, keypoints_data) in enumerate(pose_items):
-                    if idx % 2 == 0:  # Every other frame
-                        available_timestamps.append(timestamp_ms)
-                        prompt += f"{timestamp_ms}ms: "
-                        if keypoints_data.get("keypoints"):
-                            # Only include key joints (shoulders, elbows, wrists, hips, knees)
-                            key_joints = [
-                                "left_shoulder",
-                                "right_shoulder",
-                                "left_elbow",
-                                "right_elbow",
-                                "left_wrist",
-                                "right_wrist",
-                                "left_hip",
-                                "right_hip",
-                                "left_knee",
-                                "right_knee",
+                    available_timestamps.append(timestamp_ms)
+                    prompt += f"{timestamp_ms}ms: "
+                    if keypoints_data.get("keypoints"):
+                        key_joints = [
+                            "left_shoulder",
+                            "right_shoulder",
+                            "left_elbow",
+                            "right_elbow",
+                            "left_wrist",
+                            "right_wrist",
+                            "left_hip",
+                            "right_hip",
+                            "left_knee",
+                            "right_knee",
+                        ]
+                        kp_data = keypoints_data["keypoints"]
+                        coords_str = ", ".join(
+                            [
+                                f"{kp}=[{kp_data[kp][0]:.2f},{kp_data[kp][1]:.2f}]"
+                                for kp in key_joints
+                                if kp in kp_data
                             ]
-                            kp_data = keypoints_data["keypoints"]
-                            coords_str = ", ".join(
-                                [
-                                    f"{kp}=[{kp_data[kp][0]:.2f},{kp_data[kp][1]:.2f}]"
-                                    for kp in key_joints
-                                    if kp in kp_data
-                                ]
-                            )
-                            prompt += coords_str + "\n"
+                        )
+                        prompt += coords_str + "\n"
 
                 print(
-                    f"[Analyze] 📊 Pose data: {len(available_timestamps)} frames (sampled every 2nd)"
+                    f"[Analyze] 📊 Pose data: {len(available_timestamps)} frames"
                 )
 
                 prompt += f"""\nTIMESTAMP RULES: Use exact timestamps from: {", ".join(map(str, available_timestamps[:10]))}{"..." if len(available_timestamps) > 10 else ""}
@@ -552,12 +545,34 @@ VISUAL RULES: Backend draws skeleton automatically. Always specify LEFT/RIGHT bo
 """
 
             prompt += """
-=== OUTPUT (JSON only, no markdown) ===
-Return 1-5 feedback_points grouped by severity. Always specify LEFT/RIGHT body parts. Include positive_note.
-*** CRITICAL: EVERY feedback_point MUST include "severity" field with EXACTLY one of: "major", "intermediate", or "minor" ***
-*** CRITICAL: DO NOT SAY THE TIMESTAMP IN THE FEEDBACK SUCH AS "AT 0.3S" or "AT 1S" ***
-Prioritize: most major issues first, then intermediate, then minor.
-Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"mistake_timestamp_ms":1200,"severity":"major","coaching_script":"Here, raise your LEFT elbow higher.","visuals":{"overlay_type":"ANGLE_CORRECTION","focus_point":{"x":0.5,"y":0.5},"vectors":[{"start":[0.5,0.5],"end":[0.6,0.6],"color":"red","label":"Current"},{"start":[0.5,0.5],"end":[0.4,0.4],"color":"green","label":"Target"}],"path_points":null}},{"mistake_timestamp_ms":2400,"severity":"intermediate","coaching_script":"Keep your head more neutral.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.5,"y":0.2},"vectors":[],"path_points":null}},{"mistake_timestamp_ms":3000,"severity":"minor","coaching_script":"Slight RIGHT shoulder adjustment needed.","visuals":{"overlay_type":"POINT_HIGHLIGHT","focus_point":{"x":0.65,"y":0.35},"vectors":[],"path_points":null}}]}
+=== OUTPUT FORMAT (strict JSON, no markdown fences) ===
+
+You MUST return ONLY a JSON object with EXACTLY these top-level keys:
+  "status": "success",
+  "positive_note": "<one encouraging sentence about their overall form>",
+  "feedback_points": [ ... ]
+
+Each object in "feedback_points" MUST have EXACTLY these keys (no extras):
+  "mistake_timestamp_ms": <int from the available timestamps>,
+  "severity": "major" | "intermediate" | "minor",
+  "positive_note": "<one encouraging sentence specific to this moment>",
+  "coaching_script": "<the correction advice, specify LEFT/RIGHT body parts>",
+  "visuals": {
+    "overlay_type": "ANGLE_CORRECTION" | "POSITION_MARKER" | "PATH_TRACE",
+    "focus_point": {"x": <float 0-1>, "y": <float 0-1>},
+    "vectors": [{"start": [x,y], "end": [x,y], "color": "red"|"green", "label": "Current"|"Target"}],
+    "path_points": null
+  }
+
+RULES:
+- Return 1-5 feedback_points. Mix severities: use "major" for serious form issues, "intermediate" for moderate, "minor" for small tweaks.
+- DO NOT omit "severity" or "coaching_script" — every feedback point MUST have both.
+- DO NOT say timestamps in coaching_script (no "at 0.3s" or "at 1500ms").
+- DO NOT add keys not listed above (no "feedback_script", "progress_delta", "improvement_delta", etc.).
+- Prioritize: major issues first, then intermediate, then minor.
+
+Example:
+{"status":"success","positive_note":"Good form!","feedback_points":[{"mistake_timestamp_ms":1200,"severity":"major","positive_note":"Nice power in your swing!","coaching_script":"Raise your LEFT elbow higher to improve your arc.","visuals":{"overlay_type":"ANGLE_CORRECTION","focus_point":{"x":0.5,"y":0.5},"vectors":[{"start":[0.5,0.5],"end":[0.6,0.6],"color":"red","label":"Current"},{"start":[0.5,0.5],"end":[0.4,0.4],"color":"green","label":"Target"}],"path_points":null}},{"mistake_timestamp_ms":2400,"severity":"intermediate","positive_note":"Great rotation here!","coaching_script":"Keep your head more neutral through the motion.","visuals":{"overlay_type":"POSITION_MARKER","focus_point":{"x":0.5,"y":0.2},"vectors":[],"path_points":null}},{"mistake_timestamp_ms":3000,"severity":"minor","positive_note":"Solid base position.","coaching_script":"Slight RIGHT shoulder adjustment needed.","visuals":{"overlay_type":"POSITION_MARKER","focus_point":{"x":0.65,"y":0.35},"vectors":[],"path_points":null}}]}
 """
 
             print(f"\n[Analyze] 📝 Prompt constructed ({len(prompt):,} chars)")
@@ -577,7 +592,7 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
             total_frames = len(vr)
             total_duration = total_frames / actual_fps
 
-            # Sample at 8 fps for the first 5 seconds (enough for movement analysis)
+            # Sample at 8 fps for the first 5 seconds
             end_time = min(5.0, total_duration)
             nframes = max(1, int(end_time * 8.0))
             frame_indices = np.linspace(
@@ -587,82 +602,49 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
                 dtype=int,
             ).tolist()
             raw_frames = vr.get_batch(frame_indices).asnumpy()
-            video_frames = [PILImage.fromarray(f) for f in raw_frames]
+
+            MAX_DIM = 480
+            video_frames = []
+            for f in raw_frames:
+                img = PILImage.fromarray(f)
+                w, h = img.size
+                if max(w, h) > MAX_DIM:
+                    scale = MAX_DIM / max(w, h)
+                    img = img.resize((int(w * scale), int(h * scale)), PILImage.LANCZOS)
+                video_frames.append(img)
             del vr
 
             print(
-                f"[Analyze] 🎞️  Extracted {len(video_frames)} frames from {total_duration:.1f}s video ({actual_fps:.1f} native fps, sampled {nframes} frames over {end_time:.1f}s)"
+                f"[Analyze] 🎞️  Extracted {len(video_frames)} frames from {total_duration:.1f}s video "
+                f"({actual_fps:.1f} native fps, sampled {nframes} frames over {end_time:.1f}s, max {MAX_DIM}px)"
             )
 
-            # Build messages with pre-decoded PIL frames
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "video", "video": video_frames},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ]
+            import base64
+            import io
 
-            # === Official Qwen3-VL pipeline (one-step apply_chat_template) ===
-            inputs = self.processor.apply_chat_template(
-                messages,
-                tokenize=True,
-                add_generation_prompt=True,
-                return_dict=True,
-                return_tensors="pt",
-            ).to("cuda")
+            content = []
+            for frame in video_frames:
+                buf = io.BytesIO()
+                frame.save(buf, format="JPEG", quality=75)
+                b64 = base64.b64encode(buf.getvalue()).decode()
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                })
+            content.append({"type": "text", "text": prompt})
+            messages = [{"role": "user", "content": content}]
 
-            # Log model input tensor shapes
-            print(f"[Analyze] 🧠 Model input tensors:")
-            for k, v in inputs.items():
-                if hasattr(v, "shape"):
-                    print(f"  {k}: shape={v.shape}, dtype={v.dtype}")
+            print(f"[Analyze] 🧠 Built {len(video_frames)} base64 frames for vLLM chat")
 
-            # Fix: Qwen3-VL creates per-frame vision blocks, each needing its own
-            # grid_thw entry. Expand [1, H, W] → [num_frames, H, W] if mismatched.
-            import itertools
-            import torch
-
-            mm_types = inputs["mm_token_type_ids"][0].tolist()
-            type_groups = [(k, len(list(g))) for k, g in itertools.groupby(mm_types)]
-            video_groups = [(k, l) for k, l in type_groups if k == 2]
-            n_video_groups = len(video_groups)
-            n_grid_entries = inputs["video_grid_thw"].shape[0]
-            if n_video_groups > n_grid_entries:
-                orig_thw = inputs["video_grid_thw"][0]
-                t_val, h_val, w_val = (
-                    orig_thw[0].item(),
-                    orig_thw[1].item(),
-                    orig_thw[2].item(),
-                )
-                expanded = torch.tensor(
-                    [[1, h_val, w_val]] * n_video_groups,
-                    dtype=orig_thw.dtype,
-                    device=orig_thw.device,
-                )
-                inputs["video_grid_thw"] = expanded
-                print(
-                    f"[Analyze] ⚠️  Expanded video_grid_thw: {n_grid_entries} → {n_video_groups} entries"
-                )
-
-            # Native Hugging Face generation
             t_gen_start = _time.time()
-            print(f"[Analyze] 🚀 Starting model.generate (max_new_tokens=1536)...")
-            generated_ids = self.raw_model.generate(**inputs, max_new_tokens=1536)
+            print(f"[Analyze] 🚀 Starting llm.chat (max_tokens=1536)...")
+            outputs = self.llm.chat(
+                messages, self.sampling_params, lora_request=self.lora_request
+            )
             t_gen_end = _time.time()
-            generated_ids_trimmed = [
-                out_ids[len(in_ids) :]
-                for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            output_text = self.processor.batch_decode(
-                generated_ids_trimmed,
-                skip_special_tokens=True,
-                clean_up_tokenization_spaces=False,
-            )[0]
+            output_text = outputs[0].outputs[0].text
 
-            print(f"[Analyze] ✅ Generation complete in {t_gen_end - t_gen_start:.1f}s")
+            print(f"[Analyze] Generation complete in {t_gen_end - t_gen_start:.1f}s")
             print(f"[Analyze] --- RAW MODEL OUTPUT ({len(output_text)} chars) ---")
             print(output_text[:3000])
             if len(output_text) > 3000:
@@ -679,50 +661,71 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
             # Parse JSON response
             result = json_lib.loads(clean_json_str)
 
-            # Cap feedback points at 10
+            # ── Normalize raw model output into frontend-compatible schema ────
+            raw_fps = result.get("feedback_points", [])[:5]
             if len(result.get("feedback_points", [])) > 5:
-                print(
-                    f"[Analyze] Capping feedback_points from {len(result['feedback_points'])} to 5 (before severity split)"
+                print(f"[Analyze] Capping feedback_points from {len(result['feedback_points'])} to 5")
+
+            clean_fps = []
+            for raw_fp in raw_fps:
+                script = (
+                    raw_fp.get("coaching_script")
+                    or raw_fp.get("feedback_script")
+                    or ""
                 )
-                result["feedback_points"] = result["feedback_points"][:5]
+                if not script:
+                    print(f"[Analyze] ⚠️  Skipping feedback point with no coaching text")
+                    continue
 
-            # Ensure all feedback points have severity - default to "intermediate" if missing
-            missing_severity_count = 0
-            for fp in result.get("feedback_points", []):
-                if "severity" not in fp:
-                    missing_severity_count += 1
-                    fp["severity"] = "intermediate"
-                    print(
-                        f"[Analyze] ⚠️  Feedback point missing severity field - defaulting to 'intermediate'"
-                    )
+                severity = raw_fp.get("severity", "intermediate")
+                if severity not in ("major", "intermediate", "minor"):
+                    print(f"[Analyze] ⚠️  Invalid severity '{severity}' → defaulting to 'intermediate'")
+                    severity = "intermediate"
 
-            if missing_severity_count > 0:
-                print(
-                    f"[Analyze] ⚠️  {missing_severity_count} feedback point(s) were missing severity field (now all have it)"
-                )
-            else:
-                print(f"[Analyze] ✓ All feedback points have severity field")
+                raw_visuals = raw_fp.get("visuals")
+                clean_visuals = None
+                if raw_visuals and isinstance(raw_visuals, dict):
+                    overlay = raw_visuals.get("overlay_type", "ANGLE_CORRECTION")
+                    if overlay not in ("ANGLE_CORRECTION", "POSITION_MARKER", "PATH_TRACE", "POINT_HIGHLIGHT"):
+                        overlay = "ANGLE_CORRECTION"
 
-            # Sort feedback points by timestamp ascending
-            result["feedback_points"] = sorted(
-                result.get("feedback_points", []),
-                key=lambda fp: fp.get("mistake_timestamp_ms", 0),
-            )
-            print(
-                f"[Analyze] ✓ Sorted {len(result['feedback_points'])} feedback points by timestamp (ascending)"
-            )
+                    clean_vectors = []
+                    for v in raw_visuals.get("vectors") or []:
+                        if isinstance(v, dict) and "start" in v and "end" in v:
+                            clean_vectors.append({
+                                "start": list(v["start"])[:2],
+                                "end": list(v["end"])[:2],
+                                "color": v.get("color", "red"),
+                                **({"label": v["label"]} if v.get("label") else {}),
+                            })
+
+                    clean_visuals = {
+                        "overlay_type": overlay,
+                        **({"focus_point": raw_visuals["focus_point"]} if raw_visuals.get("focus_point") else {}),
+                        "vectors": clean_vectors,
+                        **({"path_points": raw_visuals["path_points"]} if raw_visuals.get("path_points") else {}),
+                    }
+
+                fp_out = {
+                    "mistake_timestamp_ms": int(raw_fp.get("mistake_timestamp_ms", 0)),
+                    "coaching_script": script,
+                    "severity": severity,
+                    "visuals": clean_visuals,
+                    "audio_url": "",
+                }
+                pos_note = (raw_fp.get("positive_note") or "").strip()
+                if pos_note:
+                    fp_out["positive_note"] = pos_note
+                clean_fps.append(fp_out)
+
+            clean_fps.sort(key=lambda fp: fp["mistake_timestamp_ms"])
+            print(f"[Analyze] ✓ Normalized {len(clean_fps)} feedback points (sorted by timestamp)")
 
             # ── Deterministic score formula ─────────────────────────────────────
-            #   progress_score = 100 - (n_major×12) - (n_intermediate×5) - (n_minor×2)
-            #   clamped to [10, 100]
-            #   improvement_delta = current_score - previous_score  (null on first session)
             SEVERITY_PENALTIES = {"major": 12, "intermediate": 5, "minor": 2}
-            fps = result.get("feedback_points", [])
-            n_major = sum(1 for fp in fps if fp.get("severity") == "major")
-            n_intermediate = sum(
-                1 for fp in fps if fp.get("severity") == "intermediate"
-            )
-            n_minor = sum(1 for fp in fps if fp.get("severity") == "minor")
+            n_major = sum(1 for fp in clean_fps if fp["severity"] == "major")
+            n_intermediate = sum(1 for fp in clean_fps if fp["severity"] == "intermediate")
+            n_minor = sum(1 for fp in clean_fps if fp["severity"] == "minor")
             raw_score = (
                 100
                 - n_major * SEVERITY_PENALTIES["major"]
@@ -742,30 +745,35 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
                 except Exception:
                     pass
 
-            result["progress_score"] = computed_score
-            result["improvement_delta"] = improvement_delta
+            result = {
+                "status": result.get("status", "success"),
+                "positive_note": result.get("positive_note", ""),
+                "progress_score": computed_score,
+                "improvement_delta": improvement_delta,
+                "feedback_points": clean_fps,
+            }
+            if result.get("status") == "error":
+                result["error_message"] = result.get("error_message", "Unknown error")
+
             print(
                 f"[Analyze] 📐 Score: 100 - {n_major}×12 - {n_intermediate}×5 - {n_minor}×2"
                 f" = {raw_score} → clamped → {computed_score}"
             )
             if improvement_delta is not None:
-                print(
-                    f"[Analyze] 📈 improvement_delta = {improvement_delta:+d} (prev={prev_score}, curr={computed_score})"
-                )
+                print(f"[Analyze] 📈 improvement_delta = {improvement_delta:+d} (prev={prev_score}, curr={computed_score})")
             else:
                 print(f"[Analyze] 📈 improvement_delta = null (first session)")
-            # ───────────────────────────────────────────────────────────────────
 
             t_end = _time.time()
             print(f"\n[Analyze] 📊 Parsed result summary:")
-            print(f"  status: {result.get('status')}")
-            print(f"  progress_score: {result.get('progress_score')}")
-            print(f"  improvement_delta: {result.get('improvement_delta')}")
-            print(f"  positive_note: {result.get('positive_note', '')[:100]}")
-            print(f"  feedback_points: {len(result.get('feedback_points', []))}")
-            for i, fp in enumerate(result.get("feedback_points", [])):
+            print(f"  status: {result['status']}")
+            print(f"  progress_score: {result['progress_score']}")
+            print(f"  improvement_delta: {result['improvement_delta']}")
+            print(f"  positive_note: {result['positive_note'][:100]}")
+            print(f"  feedback_points: {len(result['feedback_points'])}")
+            for i, fp in enumerate(result["feedback_points"]):
                 print(
-                    f"    [{i}] @{fp.get('mistake_timestamp_ms')}ms [{fp.get('severity', 'MISSING')}]: {fp.get('coaching_script', '')[:60]}..."
+                    f"    [{i}] @{fp['mistake_timestamp_ms']}ms [{fp['severity']}]: {fp['coaching_script'][:60]}..."
                 )
             print(
                 f"[Analyze] ⏱️  Total analyze time: {t_end - t_start:.1f}s (generation: {t_gen_end - t_gen_start:.1f}s)"
@@ -1201,23 +1209,18 @@ async def analyze(request: Request):
             duration_seconds = total_frames / fps
             cap.release()
 
-            # Cap effective fps for sampling at 16 to reduce YOLO calls and prompt size
-            fps = min(fps, 8.0)
-
-            # Sample every 6th frame (at 16fps cap = ~2.7 samples/sec, sufficient for pose analysis)
-            # Limit to first 5 seconds to keep LLM prompt manageable
+            # Sample at ~4 poses/sec for the first 5 seconds
             max_duration = min(5.0, duration_seconds)
-            max_frame = int(max_duration * fps)
-
-            # Start at frame 0, then 6, 12, 18, etc.
+            sample_fps = min(fps, 4.0)
+            n_samples = max(1, int(max_duration * sample_fps))
             sample_timestamps = [
-                int((frame_idx / fps) * 1000) for frame_idx in range(0, max_frame, 6)
+                int((i / sample_fps) * 1000) for i in range(n_samples)
             ]
             print(
-                f"[Endpoint] Video: {fps:.2f} fps (capped to 16), {total_frames} frames total, {duration_seconds:.1f}s duration"
+                f"[Endpoint] Video: {fps:.2f} fps, {total_frames} frames total, {duration_seconds:.1f}s duration"
             )
             print(
-                f"[Endpoint] 🦴 Extracting pose data from every 6th frame for first {max_duration:.1f}s"
+                f"[Endpoint] 🦴 Extracting pose at {sample_fps:.0f} fps → {len(sample_timestamps)} samples for first {max_duration:.1f}s"
             )
             print(
                 f"[Endpoint] 🦴 Generated {len(sample_timestamps)} timestamps: {sample_timestamps[:10]}{'...' if len(sample_timestamps) > 10 else ''}"

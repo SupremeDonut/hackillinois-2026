@@ -1,0 +1,23 @@
+{
+  "status": "success",
+  "positive_note": "Good effort! Your overall form shows promise.",
+  "progress_score": 65,
+  "improvement_delta": null,
+  "feedback_points": [
+    {
+      "mistake_timestamp_ms": 1200,
+      "severity": "major",
+      "coaching_script": "Try raising your LEFT elbow higher to improve your form.",
+      "visuals": {
+        "overlay_type": "ANGLE_CORRECTION",
+        "focus_point": {"x": 0.4, "y": 0.45},
+        "vectors": [
+          {"start": [0.4, 0.45], "end": [0.35, 0.55], "color": "red", "label": "Current"},
+          {"start": [0.4, 0.45], "end": [0.3, 0.35], "color": "green", "label": "Target"}
+        ],
+        "path_points": null
+      },
+      "audio_url": ""
+    }
+  ]
+}

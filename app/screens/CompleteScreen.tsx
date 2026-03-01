@@ -60,6 +60,13 @@ export default function CompleteScreen() {
 
     const activeFeedback = feedbackByLevel[activeTab];
 
+    // Auto-select the first non-empty severity tab
+    useEffect(() => {
+        if (feedbackByLevel.major.length > 0) setActiveTab('major');
+        else if (feedbackByLevel.intermediate.length > 0) setActiveTab('intermediate');
+        else if (feedbackByLevel.minor.length > 0) setActiveTab('minor');
+    }, [data]);
+
     useEffect(() => {
         // Save run to goal if this session is associated with one
         if (goalId) {
@@ -240,7 +247,9 @@ export default function CompleteScreen() {
                             {activeFeedback.length > 0 ? (
                                 activeFeedback.map((feedback: any, idx: number) => (
                                     <View key={idx} style={[S.feedbackCard, { borderLeftColor: SEVERITY_COLORS[activeTab], borderLeftWidth: 3 }]}>
-                                        {/* Feedback Card Header */}
+                                        {feedback.positive_note ? (
+                                            <Text style={S.feedbackPositiveNote}>{feedback.positive_note}</Text>
+                                        ) : null}
                                         <View style={S.feedbackCardHeader}>
                                             <Text style={S.feedbackCoachingScript}>{feedback.coaching_script}</Text>
                                             <View style={S.buttonGroup}>
@@ -525,6 +534,12 @@ const S = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         gap: Spacing.sm,
+    },
+    feedbackPositiveNote: {
+        fontSize: 13,
+        color: Colors.success,
+        fontWeight: '600',
+        marginBottom: 6,
     },
     feedbackCoachingScript: {
         fontSize: 14,

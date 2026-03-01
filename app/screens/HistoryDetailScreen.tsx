@@ -137,6 +137,12 @@ export default function HistoryDetailScreen() {
     };
     const activeFeedback = feedbackByLevel[activeTab];
 
+    useEffect(() => {
+        if (feedbackByLevel.major.length > 0) setActiveTab('major');
+        else if (feedbackByLevel.intermediate.length > 0) setActiveTab('intermediate');
+        else if (feedbackByLevel.minor.length > 0) setActiveTab('minor');
+    }, [data]);
+
     // Sorted goals: matching activityType first
     const sortedGoals = [...goals].sort((a, b) => {
         const aMatch = a.activityType === session.activityType ? -1 : 0;
@@ -262,6 +268,9 @@ export default function HistoryDetailScreen() {
                             const loading = isLoading === globalIdx;
                             return (
                                 <View key={globalIdx} style={S.feedbackCard}>
+                                    {fp.positive_note ? (
+                                        <Text style={S.feedbackPositiveNote}>{fp.positive_note}</Text>
+                                    ) : null}
                                     <View style={S.feedbackCardTop}>
                                         <Text style={S.feedbackIndex}>{i + 1}</Text>
                                         <Text style={S.feedbackText} numberOfLines={5}>
@@ -554,6 +563,12 @@ const S = StyleSheet.create({
         fontWeight: '800',
         width: 18,
         marginTop: 2,
+    },
+    feedbackPositiveNote: {
+        fontSize: 13,
+        color: Colors.success,
+        fontWeight: '600',
+        marginBottom: 6,
     },
     feedbackText: {
         flex: 1,
