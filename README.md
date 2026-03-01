@@ -16,7 +16,7 @@ Built at [HackIllinois 2026](https://hackillinois.org).
 
 ## Overview
 
-MotionCoach AI is a mobile app that turns your phone into a personal sports coach. Point your camera at yourself practicing any physical activity -- a basketball free throw, a yoga pose, a golf swing -- and the app tells you exactly what to fix, shows you where on your body to adjust, and speaks the correction out loud.
+Morphi is a mobile app that turns your phone into a personal sports coach. Point your camera at yourself practicing any physical activity -- a basketball free throw, a yoga pose, a golf swing -- and the app tells you exactly what to fix, shows you where on your body to adjust, and speaks the correction out loud.
 
 Under the hood, this is a full-stack ML system:
 
@@ -195,7 +195,7 @@ We built an automated pipeline that creates high-quality pose correction trainin
 **3. Gemini 3.0 Flash distillation.** Each filtered image, along with its YOLO keypoint coordinates, is sent to Gemini 3.0 Flash (with structured JSON output mode) to generate coaching labels. The prompt requires Gemini to produce:
 - A **progress score** (0-100) grading overall form quality
 - A **positive note** highlighting what the athlete does well
-- 1-3 **feedback points**, each with a coaching script and precise **ANGLE_CORRECTION** visual overlays (current vs. target vectors anchored to YOLO keypoint coordinates)
+- 1-5 **feedback points**, each with a coaching script and precise **ANGLE_CORRECTION** visual overlays (current vs. target vectors anchored to YOLO keypoint coordinates)
 
 This is knowledge distillation: we use a frontier model (Gemini) as the teacher to generate thousands of expert-quality labels, then train our own model to reproduce and internalize that expertise.
 
