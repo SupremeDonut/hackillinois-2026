@@ -4,7 +4,6 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
 import { Colors, Spacing, Radius } from "../styles/theme";
-import { loadGoals, createGoal } from "../services/goalStore";
 import {
     View,
     Text,
@@ -71,7 +70,6 @@ export default function HomeScreen() {
     // Reload account whenever screen is focused
     useFocusEffect(
         useCallback(() => {
-            loadGoals().then(setGoals);
             getAccount().then(a => {
                 if (a) setDisplayName(a.displayName);
             });
@@ -487,3 +485,5 @@ const S = StyleSheet.create({
     },
 
 });
+
+
