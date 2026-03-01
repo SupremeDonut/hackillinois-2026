@@ -4,6 +4,30 @@ AI-powered coaching for physical activities. Record a short video of your basket
 
 Built at [HackIllinois 2026](https://hackillinois.org).
 
+### How It Works
+
+1. **Record:** The user records up to 5 seconds of video and selects an activity type (basketball shot, golf swing, etc.).
+2. **Upload:** The video is sent as `multipart/form-data` to the Modal backend.
+3. **Pose Detection:** MediaPipe / YOLO extracts 17-keypoint skeleton data frame-by-frame and identifies the peak-action frame where a mistake occurs.
+4. **VLM Analysis:** The mistake frame image and YOLO keypoint coordinates are sent to Qwen3-VL-32B, which generates a biomechanical correction grounded in the exact joint positions.
+5. **Voice Feedback:** The coaching text is sent to ElevenLabs TTS to produce a natural voice narration.
+6. **Playback:** The app plays the video, pauses at the mistake timestamp, renders SVG overlays showing current vs. target joint positions, and plays the voice coaching.
+7. **Progress:** The user sees a progress score and can retry to track improvement over time.
+
+## Overview
+
+MotionCoach AI is a mobile app that turns your phone into a personal sports coach. Point your camera at yourself practicing any physical activity -- a basketball free throw, a yoga pose, a golf swing -- and the app tells you exactly what to fix, shows you where on your body to adjust, and speaks the correction out loud.
+
+Under the hood, this is a full-stack ML system:
+
+- A **React Native (Expo)** frontend handles video capture, SVG overlay rendering, and voice playback.
+- A **serverless GPU backend on Modal** runs pose estimation (YOLO26x-pose) and a **custom fine-tuned Qwen3-VL-32B** vision-language model to generate spatially-grounded coaching feedback.
+- We built an **automated data curation pipeline** that distills coaching knowledge from Gemini 3.0 Flash into ~2,300 labeled examples, then trained a **LoRA adapter on 8x H200 GPUs** to specialize the model for biomechanical correction.
+- Feedback is structured as machine-readable JSON with `ANGLE_CORRECTION` vectors tied to YOLO keypoints, enabling the app to render precise visual overlays (current joint angle vs. target) directly from model output.
+- **ElevenLabs TTS** converts the coaching text into natural voice narration for a hands-free experience.
+
+The key insight is that pose detection alone can tell you *where* joints are, but not *what's wrong* or *how to fix it*. By combining skeleton data with a fine-tuned VLM, we bridge the gap between raw pose estimation and actionable coaching.
+
 ## Demo
 
 ```
@@ -163,15 +187,6 @@ The LoRA adapter is automatically downloaded locally after training and can opti
 | Text-to-Speech | ElevenLabs API |
 | Fine-Tuning | MS-Swift LoRA SFT on 8x H200 GPUs via Modal |
 
-### How It Works
-
-1. **Record:** The user records up to 5 seconds of video and selects an activity type (basketball shot, golf swing, etc.).
-2. **Upload:** The video is sent as `multipart/form-data` to the Modal backend.
-3. **Pose Detection:** MediaPipe / YOLO extracts 17-keypoint skeleton data frame-by-frame and identifies the peak-action frame where a mistake occurs.
-4. **VLM Analysis:** The mistake frame image and YOLO keypoint coordinates are sent to Qwen3-VL-32B, which generates a biomechanical correction grounded in the exact joint positions.
-5. **Voice Feedback:** The coaching text is sent to ElevenLabs TTS to produce a natural voice narration.
-6. **Playback:** The app plays the video, pauses at the mistake timestamp, renders SVG overlays showing current vs. target joint positions, and plays the voice coaching.
-7. **Progress:** The user sees a progress score and can retry to track improvement over time.
 
 ### Project Structure
 
