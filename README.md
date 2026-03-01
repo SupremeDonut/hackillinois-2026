@@ -1,6 +1,6 @@
 # Morphi
 
-AI-powered coaching for physical activities. Record a short video of your basketball shot, golf swing, guitar strumming, or dance move, describe what you want to improve, and get real-time feedback with visual overlays and voice narration.
+AI-powered coaching for physical activities. Record a short video of your basketball shot, golf swing, guitar strumming, or dance move, describe what you want to improve, and get real-time feedback with visual overlays and voice narration. All built on a custom Lora trained version of Qwen3.
 
 Built at [HackIllinois 2026](https://hackillinois.org).
 
@@ -31,8 +31,77 @@ The key insight is that pose detection alone can tell you *where* joints are, bu
 ## Demo
 
 ```
-Record (≤5s) → Describe goal → AI analyzes → Video pauses at mistake → Overlay + voice feedback → Progress score → Retry
+Onboarding → Set Goal → Record (≤5s) → AI Analyzes → Playback with Overlays + Voice → Results & Score → Retry / Track Progress
 ```
+
+## Frontend Features
+
+### Onboarding
+
+A first-time welcome screen where users create an account with a display name and email. The app remembers the account locally via AsyncStorage and skips onboarding on subsequent launches.
+
+### Activity Selection & Focus Description
+
+On the home screen, users pick an activity type from preset chips (Basketball Shot, Golf Swing, Badminton Smash, Tennis Serve, Guitar Chord, Dance Move) or type a custom one. An optional multiline text field lets users describe a specific area to focus on (e.g., "I want to keep my elbow higher on the follow-through").
+
+### Voice Coach Selection
+
+Users choose from three AI voice coaches — **Peter** (default), **Brock** (drill sergeant), and **Maria** (soft) — each with a distinct personality. The selected voice is used for all spoken feedback during playback.
+
+### Video Recording with Countdown
+
+The recording screen opens a full-screen camera with a 3-second "Get ready!" pre-countdown, then records up to 5 seconds with a visible timer. Users can flip between front and back cameras and cancel during the countdown. An activity badge at the top confirms what they're recording.
+
+### Analysis Progress
+
+While the backend processes the video, an animated loading screen shows seven discrete stages (uploading, pose detection, AI analysis, generating feedback, voice synthesis, building overlays, finalizing) with a progress bar and spinning geometric animation.
+
+### Coaching Playback with Timed Overlays
+
+The playback screen syncs AI feedback to the video timeline. At each feedback timestamp the video pauses and displays a two-step coaching overlay:
+
+1. **Coach Says** — a text card with the coaching script and a "Show Corrected Frame" button.
+2. **Frame View** — an SVG overlay drawn directly on the paused frame, showing current vs. target joint positions with angle arcs, correction vectors, and degree labels.
+
+The AI voice narration plays automatically at each pause point. A bottom bar shows "Watching your form…" during playback and switches to "View Results" when all feedback has been presented.
+
+### Visual Overlay Engine
+
+The `SVGOverlay` component renders three types of corrections on the video frame using `react-native-svg`:
+
+- **Angle Corrections** — red (current) and green (target) vectors radiating from a joint, with an arc and degree label showing the adjustment needed.
+- **Position Markers** — focus circles highlighting specific body parts.
+- **Path Traces** — curved motion paths for trajectory corrections.
+
+All coordinates are normalized (0–1) and scaled to the video layout at render time.
+
+### Session Results
+
+After playback, the complete screen shows:
+
+- A **grade pill** (Elite / Good / Progress / Keep Going) based on the form score.
+- An **animated score bar** (0–100) with improvement delta compared to the last attempt.
+- A **positive note** highlighting what the user did well.
+- **Feedback cards** organized by severity tabs (Major, Intermediate, Minor), each with a button to replay the AI voice clip for that correction.
+- **Try Again** (re-records with the previous analysis context for comparison) and **New Session** actions.
+
+### Goal Tracking
+
+Users can create named goals from the home screen (e.g., "Fix my free-throw arc"). Each goal is tied to an activity type and persists locally. The home screen displays goal cards showing the activity type, goal name, session count, latest score, and improvement delta since the last session.
+
+### Goal Detail & Progression Chart
+
+Tapping a goal card opens a detail screen with:
+
+- **Stats row** — total sessions, latest score, and personal best.
+- **Progression chart** — an SVG line chart plotting the form score across all sessions, with color-coded dots (green for improvement, red for regression, teal for first attempt) and score labels.
+- **Session history** — a chronological list of every session with its score and delta.
+- A **Start New Session** button to record again for that goal.
+- **Delete goal** with a confirmation dialog.
+
+### Design System
+
+The app uses a dark theme (`#16161F` background) with teal (`#00E5A0`) as the primary accent. Consistent design tokens for spacing, border radius, typography, and card styles are defined in `app/styles/theme.ts` and shared across all screens.
 
 ## Running the App
 
@@ -191,24 +260,24 @@ The LoRA adapter is automatically downloaded locally after training and can opti
 ### Project Structure
 
 ```
-├── App.tsx                        # Entry point & navigation
+├── App.tsx                        # Entry point, navigation stack, dark theme
 ├── app/
 │   ├── screens/
-│   │   ├── OnboardingScreen.tsx   # First-time welcome flow
-│   │   ├── HomeScreen.tsx         # Goal list and start recording
-│   │   ├── RecordingScreen.tsx    # Camera capture with 5s limit
-│   │   ├── AnalyzingScreen.tsx    # Loading state during backend call
-│   │   ├── PlaybackScreen.tsx     # Video + SVG overlay + voice feedback
-│   │   ├── CompleteScreen.tsx     # Progress score and retry
-│   │   └── GoalDetailScreen.tsx   # Goal detail and session history
+│   │   ├── OnboardingScreen.tsx   # First-time account creation (name + email)
+│   │   ├── HomeScreen.tsx         # Dashboard: activity/voice selection, goals, start recording
+│   │   ├── RecordingScreen.tsx    # Camera capture with 3s countdown + 5s recording limit
+│   │   ├── AnalyzingScreen.tsx    # 7-stage animated progress during backend analysis
+│   │   ├── PlaybackScreen.tsx     # Video + timed coaching overlays + voice narration
+│   │   ├── CompleteScreen.tsx     # Grade pill, score bar, severity-tabbed feedback cards
+│   │   └── GoalDetailScreen.tsx   # Progression chart, session history, stats
 │   ├── components/
-│   │   └── SVGOverlay.tsx         # Drawing engine for visual feedback
+│   │   └── SVGOverlay.tsx         # Renders angle corrections, position markers, path traces
 │   ├── services/
 │   │   ├── api.ts                 # Modal API client with mock fallback
-│   │   ├── accountStore.ts        # User account persistence
-│   │   └── goalStore.ts           # Goal tracking persistence
+│   │   ├── accountStore.ts        # AsyncStorage-backed user account persistence
+│   │   └── goalStore.ts           # AsyncStorage-backed goal & session tracking
 │   ├── styles/
-│   │   └── theme.ts               # Design tokens and shared styles
+│   │   └── theme.ts               # Dark theme tokens: colors, spacing, typography
 │   └── types/
 │       └── index.ts               # TypeScript type definitions
 ├── backend/
