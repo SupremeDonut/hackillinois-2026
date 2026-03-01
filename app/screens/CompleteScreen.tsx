@@ -6,6 +6,7 @@ import { Audio } from 'expo-av';
 import { RootStackParamList } from '../types';
 import { Colors, Spacing, Radius } from '../styles/theme';
 import { addRunToGoal } from '../services/goalStore';
+import { addToHistory } from '../services/historyStore';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Complete'>;
 type CompleteRouteProp = RouteProp<RootStackParamList, 'Complete'>;
@@ -68,6 +69,17 @@ export default function CompleteScreen() {
                 improvement_delta: data.improvement_delta ?? null,
             }).catch((e) => console.warn('[Goals] Failed to save run:', e));
         }
+
+        // Always save to history
+        addToHistory({
+            date: new Date().toISOString(),
+            activityType,
+            score: data.progress_score,
+            improvement_delta: data.improvement_delta ?? null,
+            positive_note: data.positive_note ?? '',
+            feedback_count: (data.feedback_points || []).length,
+            full_data: data,
+        }).catch((e) => console.warn('[History] Failed to save session:', e));
 
         Animated.parallel([
             Animated.timing(fadeIn, { toValue: 1, duration: 500, useNativeDriver: true }),

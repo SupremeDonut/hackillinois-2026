@@ -6,12 +6,13 @@ import { getAccount } from './app/services/accountStore';
 
 // Screens
 import OnboardingScreen from './app/screens/OnboardingScreen';
-import HomeScreen from './app/screens/HomeScreen';
+import MainScreen from './app/screens/MainScreen';
 import RecordingScreen from './app/screens/RecordingScreen';
 import AnalyzingScreen from './app/screens/AnalyzingScreen';
 import PlaybackScreen from './app/screens/PlaybackScreen';
 import CompleteScreen from './app/screens/CompleteScreen';
 import GoalDetailScreen from './app/screens/GoalDetailScreen';
+import HistoryDetailScreen from './app/screens/HistoryDetailScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -36,12 +37,13 @@ export default function App() {
                 }}
             >
                 <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-                <Stack.Screen name="Home" component={HomeScreen} />
+                <Stack.Screen name="Home" component={MainScreen} />
                 <Stack.Screen name="Recording" component={RecordingScreen} />
                 <Stack.Screen name="Analyzing" component={AnalyzingScreen} />
                 <Stack.Screen name="Playback" component={PlaybackScreen} />
                 <Stack.Screen name="Complete" component={CompleteScreen} />
                 <Stack.Screen name="GoalDetail" component={GoalDetailScreen} />
+                <Stack.Screen name="HistoryDetail" component={HistoryDetailScreen} />
             </Stack.Navigator>
         </NavigationContainer>
     );

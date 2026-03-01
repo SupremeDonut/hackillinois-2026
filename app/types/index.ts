@@ -96,4 +96,18 @@ export type RootStackParamList = {
         voiceId?: string;
     };
     GoalDetail: { goalId: string };
+    HistoryDetail: { session: HistorySessionParam };
 };
+
+// Alias used by nav params (avoids circular import with historyStore)
+export interface HistorySessionParam {
+    id: string;
+    date: string;
+    activityType: string;
+    score: number;
+    improvement_delta: number | null;
+    positive_note: string;
+    feedback_count: number;
+    full_data?: AnalysisResponse;
+    linked_goal_id?: string;
+}
