@@ -15,12 +15,13 @@
  * ==============================================================================
  */
 
-import { AnalysisResponse } from '../types';
+import { AnalysisResponse } from "../types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 👇 CHANGE THIS ONE LINE WHEN THE BACKEND IS READY
 // ─────────────────────────────────────────────────────────────────────────────
-const MODAL_API_URL: string | null = 'https://kevinhyang2006--biomechanics-ai-analyze.modal.run';
+const MODAL_API_URL: string | null =
+    "https://dywang2--biomechanics-ai-analyze.modal.run";
 // const MODAL_API_URL = 'https://YOUR_WORKSPACE--analyze.modal.run';
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -28,33 +29,44 @@ export interface UploadParams {
     videoUri: string;
     activityType: string;
     description: string;
+    voiceId: string;
     previousData?: AnalysisResponse; // Forwarded for conversation context
-    _useMockRetry?: boolean;         // Dev-only: use retry mock payload when no backend
+    _useMockRetry?: boolean; // Dev-only: use retry mock payload when no backend
 }
 
-export const uploadVideo = async (params: UploadParams): Promise<AnalysisResponse> => {
-    const { videoUri, activityType, description, previousData, _useMockRetry } = params;
+export const uploadVideo = async (
+    params: UploadParams,
+): Promise<AnalysisResponse> => {
+    const {
+        videoUri,
+        activityType,
+        description,
+        voiceId,
+        previousData,
+        _useMockRetry,
+    } = params;
 
     // If no backend URL is configured yet, immediately use mock data
     if (!MODAL_API_URL) {
-        console.warn('[API] MODAL_API_URL not set — using mock data.');
+        console.warn("[API] MODAL_API_URL not set — using mock data.");
         if (_useMockRetry) {
-            return require('../data/mock_response_retry.json') as AnalysisResponse;
+            return require("../data/mock_response_retry.json") as AnalysisResponse;
         }
-        return require('../data/mock_response.json') as AnalysisResponse;
+        return require("../data/mock_response.json") as AnalysisResponse;
     }
 
     const formData = new FormData();
 
     // Stream the binary video file (never use Base64 — it OOMs on Android)
-    formData.append('video_file', {
+    formData.append("video_file", {
         uri: videoUri,
         name: `video_${Date.now()}.mp4`,
-        type: 'video/mp4',
+        type: "video/mp4",
     } as any);
 
-    formData.append('activity_type', activityType);
-    formData.append('user_description', description);
+    formData.append("activity_type", activityType);
+    formData.append("user_description", description);
+    formData.append("voice_id", voiceId);
 
     // Forward a trimmed version of the previous session as context.
     // Rules:
@@ -72,7 +84,7 @@ export const uploadVideo = async (params: UploadParams): Promise<AnalysisRespons
                 // audio_url and visuals intentionally omitted
             })),
         };
-        formData.append('previous_analysis', JSON.stringify(trimmedContext));
+        formData.append("previous_analysis", JSON.stringify(trimmedContext));
     }
 
     try {
@@ -80,9 +92,9 @@ export const uploadVideo = async (params: UploadParams): Promise<AnalysisRespons
         const timeoutId = setTimeout(() => controller.abort(), 600_000); // 10 mins timeout
 
         const response = await fetch(`${MODAL_API_URL}`, {
-            method: 'POST',
+            method: "POST",
             body: formData,
-            headers: { 'Accept': 'application/json' },
+            headers: { Accept: "application/json" },
             signal: controller.signal,
         });
 
@@ -94,10 +106,11 @@ export const uploadVideo = async (params: UploadParams): Promise<AnalysisRespons
 
         const json = await response.json();
         return json as AnalysisResponse;
-
     } catch (error) {
-        console.error('[API] Request failed, falling back to mock data.', error);
-        return require('../data/mock_response.json') as AnalysisResponse;
+        console.error(
+            "[API] Request failed, falling back to mock data.",
+            error,
+        );
+        return require("../data/mock_response.json") as AnalysisResponse;
     }
 };
-

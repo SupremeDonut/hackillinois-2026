@@ -1,22 +1,25 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Animated, StyleSheet } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, AnalysisResponse } from '../types';
-import { Colors, Spacing, Radius } from '../styles/theme';
-import { uploadVideo } from '../services/api';
+import React, { useEffect, useRef, useState } from "react";
+import { View, Text, Animated, StyleSheet } from "react-native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RootStackParamList, AnalysisResponse } from "../types";
+import { Colors, Spacing, Radius } from "../styles/theme";
+import { uploadVideo } from "../services/api";
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Analyzing'>;
-type AnalyzingRouteProp = RouteProp<RootStackParamList, 'Analyzing'>;
+type NavigationProp = NativeStackNavigationProp<
+    RootStackParamList,
+    "Analyzing"
+>;
+type AnalyzingRouteProp = RouteProp<RootStackParamList, "Analyzing">;
 
 const STAGES: { label: string; target: number; duration: number }[] = [
-    { label: 'Uploading video...', target: 0.08, duration: 800 },
-    { label: 'Detecting pose keypoints...', target: 0.22, duration: 3500 },
-    { label: 'Analysing movement with AI...', target: 0.55, duration: 28000 },
-    { label: 'Generating coaching feedback...', target: 0.72, duration: 8000 },
-    { label: 'Synthesising voice audio...', target: 0.88, duration: 6000 },
-    { label: 'Building skeleton overlays...', target: 0.95, duration: 4000 },
-    { label: 'Almost there...', target: 0.98, duration: 4000 },
+    { label: "Uploading video...", target: 0.08, duration: 800 },
+    { label: "Detecting pose keypoints...", target: 0.22, duration: 3500 },
+    { label: "Analysing movement with AI...", target: 0.55, duration: 28000 },
+    { label: "Generating coaching feedback...", target: 0.72, duration: 8000 },
+    { label: "Synthesising voice audio...", target: 0.88, duration: 6000 },
+    { label: "Building skeleton overlays...", target: 0.95, duration: 4000 },
+    { label: "Almost there...", target: 0.98, duration: 4000 },
 ];
 
 const BAR_WIDTH = 280;
@@ -24,7 +27,14 @@ const BAR_WIDTH = 280;
 export default function AnalyzingScreen() {
     const navigation = useNavigation<NavigationProp>();
     const route = useRoute<AnalyzingRouteProp>();
-    const { videoUri, activityType, description, previousData, goalId } = route.params;
+    const {
+        videoUri,
+        activityType,
+        voiceId,
+        description,
+        previousData,
+        goalId,
+    } = route.params;
 
     const rotate1 = useRef(new Animated.Value(0)).current;
     const rotate2 = useRef(new Animated.Value(0)).current;
@@ -35,12 +45,24 @@ export default function AnalyzingScreen() {
     const stageIndexRef = useRef(0);
 
     useEffect(() => {
-        Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+        Animated.timing(fade, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+        }).start();
         Animated.loop(
-            Animated.timing(rotate1, { toValue: 1, duration: 1200, useNativeDriver: true })
+            Animated.timing(rotate1, {
+                toValue: 1,
+                duration: 1200,
+                useNativeDriver: true,
+            }),
         ).start();
         Animated.loop(
-            Animated.timing(rotate2, { toValue: -1, duration: 1800, useNativeDriver: true })
+            Animated.timing(rotate2, {
+                toValue: -1,
+                duration: 1800,
+                useNativeDriver: true,
+            }),
         ).start();
     }, []);
 
@@ -62,7 +84,9 @@ export default function AnalyzingScreen() {
             });
         }
         advanceStage(0);
-        return () => { completed = true; };
+        return () => {
+            completed = true;
+        };
     }, []);
 
     // When API returns, snap bar to 100%
@@ -79,7 +103,11 @@ export default function AnalyzingScreen() {
         let cancelled = false;
         const runAnalysis = async () => {
             const data = await uploadVideo({
-                videoUri, activityType, description, previousData,
+                videoUri,
+                activityType,
+                description,
+                previousData,
+                voiceId,
                 _useMockRetry: !!previousData,
             } as any);
             if (!cancelled) {
@@ -87,7 +115,7 @@ export default function AnalyzingScreen() {
                 // Short pause so user sees 100% before navigating
                 setTimeout(() => {
                     if (!cancelled) {
-                        navigation.replace('Playback', {
+                        navigation.replace("Playback", {
                             videoUri,
                             data: data as AnalysisResponse,
                             activityType,
@@ -98,21 +126,43 @@ export default function AnalyzingScreen() {
             }
         };
         runAnalysis();
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    const spin1 = rotate1.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-    const spin2 = rotate2.interpolate({ inputRange: [-1, 0], outputRange: ['-360deg', '0deg'] });
+    const spin1 = rotate1.interpolate({
+        inputRange: [0, 1],
+        outputRange: ["0deg", "360deg"],
+    });
+    const spin2 = rotate2.interpolate({
+        inputRange: [-1, 0],
+        outputRange: ["-360deg", "0deg"],
+    });
 
     const currentLabel =
-        stageIndex < STAGES.length ? STAGES[stageIndex].label : 'Finishing up...';
+        stageIndex < STAGES.length
+            ? STAGES[stageIndex].label
+            : "Finishing up...";
 
     return (
         <Animated.View style={[S.screen, { opacity: fade }]}>
             {/* Geometric spinner */}
             <View style={S.spinnerContainer}>
-                <Animated.View style={[S.arc, S.arcOuter, { transform: [{ rotate: spin1 }] }]} />
-                <Animated.View style={[S.arc, S.arcInner, { transform: [{ rotate: spin2 }] }]} />
+                <Animated.View
+                    style={[
+                        S.arc,
+                        S.arcOuter,
+                        { transform: [{ rotate: spin1 }] },
+                    ]}
+                />
+                <Animated.View
+                    style={[
+                        S.arc,
+                        S.arcInner,
+                        { transform: [{ rotate: spin2 }] },
+                    ]}
+                />
                 <View style={S.dot} />
             </View>
 
@@ -132,21 +182,21 @@ const S = StyleSheet.create({
     screen: {
         flex: 1,
         backgroundColor: Colors.background,
-        alignItems: 'center',
-        justifyContent: 'center',
+        alignItems: "center",
+        justifyContent: "center",
         paddingHorizontal: Spacing.lg,
     },
     spinnerContainer: {
         width: 100,
         height: 100,
-        alignItems: 'center',
-        justifyContent: 'center',
+        alignItems: "center",
+        justifyContent: "center",
         marginBottom: Spacing.xl,
     },
     arc: {
-        position: 'absolute',
+        position: "absolute",
         borderRadius: 999,
-        borderColor: 'transparent',
+        borderColor: "transparent",
     },
     arcOuter: {
         width: 100,
@@ -176,7 +226,7 @@ const S = StyleSheet.create({
     },
     title: {
         fontSize: 22,
-        fontWeight: '700',
+        fontWeight: "700",
         color: Colors.text,
         letterSpacing: -0.4,
         marginBottom: 6,
@@ -184,7 +234,7 @@ const S = StyleSheet.create({
     subtitle: {
         fontSize: 13,
         color: Colors.textSecondary,
-        fontWeight: '500',
+        fontWeight: "500",
         letterSpacing: 0.3,
         marginBottom: Spacing.xl,
     },
@@ -192,8 +242,8 @@ const S = StyleSheet.create({
         width: BAR_WIDTH,
         height: 4,
         borderRadius: 2,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        overflow: 'hidden',
+        backgroundColor: "rgba(255,255,255,0.08)",
+        overflow: "hidden",
     },
     barFill: {
         height: 4,
@@ -208,7 +258,7 @@ const S = StyleSheet.create({
         marginTop: 12,
         fontSize: 13,
         color: Colors.textSecondary,
-        fontWeight: '500',
+        fontWeight: "500",
         letterSpacing: 0.2,
     },
 });
