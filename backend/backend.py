@@ -349,90 +349,6 @@ video_image = (
 
 app = modal.App("biomechanics-ai")
 
-# Temporary volume for storing videos briefly during streaming
-temp_volume = modal.Volume.from_name("video-temp", create_if_missing=True)
-
-import uuid
-import time as _cache_time
-
-
-def _generate_video_id() -> str:
-    """Generate unique video session ID."""
-    return str(uuid.uuid4())[:12]
-
-
-@app.function(
-    image=modal.Image.debian_slim().pip_install("fastapi", "python-multipart"),
-    volumes={"/tmp/video-cache": temp_volume},
-    timeout=600,
-)
-@modal.fastapi_endpoint(method="GET")
-async def get_video(video_id: str):
-    """Stream video file from volume cache.
-
-    Usage: GET /something?video_id={video_id}
-    """
-    try:
-        video_path = f"/tmp/video-cache/{video_id}.mp4"
-
-        import os
-        import mimetypes
-
-        if not os.path.exists(video_path):
-            print(f"[Video] Video {video_id} not found at {video_path}")
-            if os.path.exists("/tmp/video-cache"):
-                files = os.listdir("/tmp/video-cache")
-                print(f"[Video] Available files ({len(files)}): {files}")
-            else:
-                print(f"[Video] Cache directory does not exist")
-            return Response(
-                content=b"Video not found", status_code=404, media_type="text/plain"
-            )
-
-        # Get file size for proper streaming
-        file_size = os.path.getsize(video_path)
-        print(
-            f"[Video] File exists at {video_path}, size: {file_size / 1024 / 1024:.2f} MB"
-        )
-
-        # Read video from volume
-        with open(video_path, "rb") as f:
-            video_bytes = f.read()
-
-        print(f"[Video] Read {len(video_bytes) / 1024 / 1024:.2f} MB from disk")
-
-        if len(video_bytes) == 0:
-            print(f"[Video] ERROR: File is empty!")
-            return Response(
-                content=b"Video file is empty", status_code=500, media_type="text/plain"
-            )
-
-        if len(video_bytes) != file_size:
-            print(
-                f"[Video] WARNING: Read {len(video_bytes)} bytes but file size is {file_size}"
-            )
-
-        # Stream with proper headers for HTTP range requests
-        return Response(
-            content=video_bytes,
-            media_type="video/mp4",
-            headers={
-                "Content-Type": "video/mp4",
-                "Content-Length": str(len(video_bytes)),
-                "Content-Disposition": "inline",
-                "Cache-Control": "public, max-age=3600",
-                "Accept-Ranges": "bytes",
-            },
-        )
-    except Exception as e:
-        print(f"[Video] ⚠️  Video streaming error: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return Response(
-            content=b"Error streaming video", status_code=500, media_type="text/plain"
-        )
-
 
 @app.cls(
     gpu="B200",
@@ -1384,50 +1300,12 @@ async def analyze(request: Request):
         traceback.print_exc()
 
     # 6. Construct Final Response
-    # Store video in Modal volume for streaming
-    video_id = _generate_video_id()
-    video_path = f"/tmp/video-cache/{video_id}.mp4"
-
-    import os
-
-    os.makedirs("/tmp/video-cache", exist_ok=True)
-
-    # Write video file with proper flushing
-    try:
-        with open(video_path, "wb") as f:
-            f.write(video_bytes)
-            f.flush()  # Ensure data is written to disk
-            os.fsync(f.fileno())  # Force sync to disk
-
-        # Verify file was written
-        written_size = os.path.getsize(video_path)
-        print(
-            f"[Endpoint] 📹 Wrote video {video_id}: {written_size / 1024 / 1024:.2f} MB"
-        )
-
-        if written_size != len(video_bytes):
-            print(
-                f"[Endpoint] ⚠️  WARNING: Wrote {written_size} bytes but original was {len(video_bytes)} bytes"
-            )
-    except Exception as e:
-        print(f"[Endpoint] ❌ Failed to write video file: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise
-
-    # Get the deployed endpoint URL for video streaming (query parameter style)
-    video_url = f"https://kevinhyang2006--biomechanics-ai-get-video.modal.run?video_id={video_id}"
-
-    print(f"[Endpoint] 🔗 Video URL: {video_url}")
-
     final_feedback_points = []
     for fp, audio_b64 in zip(feedback_points, audio_results):
         fp_copy = fp.copy()
         fp_copy["audio_url"] = (
             f"data:audio/mpeg;base64,{audio_b64}" if audio_b64 else ""
         )
-        fp_copy["video_url"] = video_url
         final_feedback_points.append(fp_copy)
 
     llm_response["feedback_points"] = final_feedback_points
