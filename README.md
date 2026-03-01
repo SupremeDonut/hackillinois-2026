@@ -48,7 +48,7 @@ On the home screen, users pick an activity type from preset chips (Basketball Sh
 
 ### Voice Coach Selection
 
-Users choose from three AI voice coaches — **Peter** (default), **Brock** (drill sergeant), and **Maria** (soft) — each with a distinct personality. The selected voice is used for all spoken feedback during playback.
+Users choose from five AI coach voices — each with a distinct personality. The selected voice is used for all spoken feedback during playback.
 
 ### Video Recording with Countdown
 

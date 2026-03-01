@@ -4,10 +4,20 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../types";
 import { Colors, Spacing, Radius } from "../styles/theme";
-import {View, Text, TouchableOpacity, StyleSheet, TextInput,
-    KeyboardAvoidingView, Platform, ScrollView, SafeAreaView,
-} from 'react-native';
-import { getAccount } from '../services/accountStore';
+import { loadGoals, createGoal } from "../services/goalStore";
+import {
+    View,
+    Text,
+    TouchableOpacity,
+    StyleSheet,
+    TextInput,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    Alert,
+    SafeAreaView,
+} from "react-native";
+import { getAccount } from "../services/accountStore";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, "Home">;
 
@@ -21,8 +31,8 @@ const ACTIVITIES = [
 ];
 
 const VOICES = {
-    Peter: {
-        description: "A default, manly voice",
+    Adam: {
+        description: "A reliable mentor",
         id: "s3TPKV1kjDlVtZbl4Ksh",
     },
     Brock: {
@@ -30,8 +40,16 @@ const VOICES = {
         id: "DGzg6RaUqxGRTHSBjfgF",
     },
     Maria: {
-        description: "A soft, clear voice",
+        description: "A calm and composed coach",
         id: "vZzlAds9NzvLsFSWp0qk",
+    },
+    Anya: {
+        description: "A playful and helpful friend",
+        id: "d3MFdIuCfbAIwiu7jC4a",
+    },
+    Jon: {
+        description: "An easygoing mentor",
+        id: "Cz0K1kOv9tD8l0b5Qu53",
     },
 };
 
@@ -53,7 +71,10 @@ export default function HomeScreen() {
     // Reload account whenever screen is focused
     useFocusEffect(
         useCallback(() => {
-            getAccount().then((a) => { if (a) setDisplayName(a.displayName); });
+            loadGoals().then(setGoals);
+            getAccount().then(a => {
+                if (a) setDisplayName(a.displayName);
+            });
         }, []),
     );
 
@@ -68,64 +89,100 @@ export default function HomeScreen() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                 >
-                {/* ── Brand ── */}
-                <View style={S.brand}>
-                    <Svg width={88} height={72} viewBox="0 0 88 72" style={{ marginBottom: 14 }}>
-                        {/* Left upper wing */}
-                        <Path
-                            d="M44 36 C36 28, 14 20, 8 10 C4 2, 16 0, 24 6 C32 12, 40 24, 44 36Z"
-                            fill="#00E5A0"
-                            opacity={0.95}
-                        />
-                        {/* Right upper wing */}
-                        <Path
-                            d="M44 36 C52 28, 74 20, 80 10 C84 2, 72 0, 64 6 C56 12, 48 24, 44 36Z"
-                            fill="#00E5A0"
-                            opacity={0.95}
-                        />
-                        {/* Left lower wing */}
-                        <Path
-                            d="M44 38 C36 44, 12 46, 8 56 C4 64, 18 68, 28 60 C36 54, 42 46, 44 38Z"
-                            fill="#00C47A"
-                            opacity={0.85}
-                        />
-                        {/* Right lower wing */}
-                        <Path
-                            d="M44 38 C52 44, 76 46, 80 56 C84 64, 70 68, 60 60 C52 54, 46 46, 44 38Z"
-                            fill="#00C47A"
-                            opacity={0.85}
-                        />
-                        {/* Wing shimmer spots left upper */}
-                        <Ellipse cx={26} cy={18} rx={5} ry={3} fill="rgba(255,255,255,0.25)" />
-                        {/* Wing shimmer spots right upper */}
-                        <Ellipse cx={62} cy={18} rx={5} ry={3} fill="rgba(255,255,255,0.25)" />
-                        {/* Body */}
-                        <Ellipse cx={44} cy={37} rx={3} ry={14} fill="#E8FFF7" opacity={0.9} />
-                        {/* Left antenna */}
-                        <Path
-                            d="M42 24 C40 16, 34 10, 30 6"
-                            stroke="#90EDB0"
-                            strokeWidth={1.5}
-                            fill="none"
-                            strokeLinecap="round"
-                        />
-                        <Ellipse cx={30} cy={6} rx={2} ry={2} fill="#90EDB0" />
-                        {/* Right antenna */}
-                        <Path
-                            d="M46 24 C48 16, 54 10, 58 6"
-                            stroke="#90EDB0"
-                            strokeWidth={1.5}
-                            fill="none"
-                            strokeLinecap="round"
-                        />
-                        <Ellipse cx={58} cy={6} rx={2} ry={2} fill="#90EDB0" />
-                    </Svg>
-                    <Text style={S.appName}>Morphi</Text>
-                    <Text style={S.tagline}>Learning for every hobby.</Text>
-                    {displayName ? (
-                        <Text style={S.greeting}>Hi, {displayName}</Text>
-                    ) : null}
-                </View>
+                    {/* ── Brand ── */}
+                    <View style={S.brand}>
+                        <Svg
+                            width={88}
+                            height={72}
+                            viewBox="0 0 88 72"
+                            style={{ marginBottom: 14 }}
+                        >
+                            {/* Left upper wing */}
+                            <Path
+                                d="M44 36 C36 28, 14 20, 8 10 C4 2, 16 0, 24 6 C32 12, 40 24, 44 36Z"
+                                fill="#00E5A0"
+                                opacity={0.95}
+                            />
+                            {/* Right upper wing */}
+                            <Path
+                                d="M44 36 C52 28, 74 20, 80 10 C84 2, 72 0, 64 6 C56 12, 48 24, 44 36Z"
+                                fill="#00E5A0"
+                                opacity={0.95}
+                            />
+                            {/* Left lower wing */}
+                            <Path
+                                d="M44 38 C36 44, 12 46, 8 56 C4 64, 18 68, 28 60 C36 54, 42 46, 44 38Z"
+                                fill="#00C47A"
+                                opacity={0.85}
+                            />
+                            {/* Right lower wing */}
+                            <Path
+                                d="M44 38 C52 44, 76 46, 80 56 C84 64, 70 68, 60 60 C52 54, 46 46, 44 38Z"
+                                fill="#00C47A"
+                                opacity={0.85}
+                            />
+                            {/* Wing shimmer spots left upper */}
+                            <Ellipse
+                                cx={26}
+                                cy={18}
+                                rx={5}
+                                ry={3}
+                                fill="rgba(255,255,255,0.25)"
+                            />
+                            {/* Wing shimmer spots right upper */}
+                            <Ellipse
+                                cx={62}
+                                cy={18}
+                                rx={5}
+                                ry={3}
+                                fill="rgba(255,255,255,0.25)"
+                            />
+                            {/* Body */}
+                            <Ellipse
+                                cx={44}
+                                cy={37}
+                                rx={3}
+                                ry={14}
+                                fill="#E8FFF7"
+                                opacity={0.9}
+                            />
+                            {/* Left antenna */}
+                            <Path
+                                d="M42 24 C40 16, 34 10, 30 6"
+                                stroke="#90EDB0"
+                                strokeWidth={1.5}
+                                fill="none"
+                                strokeLinecap="round"
+                            />
+                            <Ellipse
+                                cx={30}
+                                cy={6}
+                                rx={2}
+                                ry={2}
+                                fill="#90EDB0"
+                            />
+                            {/* Right antenna */}
+                            <Path
+                                d="M46 24 C48 16, 54 10, 58 6"
+                                stroke="#90EDB0"
+                                strokeWidth={1.5}
+                                fill="none"
+                                strokeLinecap="round"
+                            />
+                            <Ellipse
+                                cx={58}
+                                cy={6}
+                                rx={2}
+                                ry={2}
+                                fill="#90EDB0"
+                            />
+                        </Svg>
+                        <Text style={S.appName}>Morphi</Text>
+                        <Text style={S.tagline}>Learning for every hobby.</Text>
+                        {displayName ? (
+                            <Text style={S.greeting}>Hi, {displayName}</Text>
+                        ) : null}
+                    </View>
 
                     {/* ── Input Card ── */}
                     <View style={S.card}>
@@ -275,7 +332,7 @@ const S = StyleSheet.create({
     greeting: {
         fontSize: 15,
         color: Colors.primary,
-        fontWeight: '700',
+        fontWeight: "700",
         marginTop: 10,
     },
     card: {

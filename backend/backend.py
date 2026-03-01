@@ -254,15 +254,17 @@ def snap_correction_vectors_to_skeleton(
             continue
 
         # Vector 1: Current limb segment (RED) - shows what IS
-        snapped_vectors.append({
-            "start": list(kp_coords),
-            "end": list(adjacent_coords),
-            "color": "#FF3B30",
-            "label": "Current",
-            "is_correction": True,
-            "body_part": kp_name.replace("_", " ").title(),
-        })
-        
+        snapped_vectors.append(
+            {
+                "start": list(kp_coords),
+                "end": list(adjacent_coords),
+                "color": "#FF3B30",
+                "label": "Current",
+                "is_correction": True,
+                "body_part": kp_name.replace("_", " ").title(),
+            }
+        )
+
         # Vector 2: Target position (GREEN) - shows what SHOULD BE
         # Use a rotation hint to show correction direction
         curr_dx = adjacent_coords[0] - kp_coords[0]
@@ -277,27 +279,33 @@ def snap_correction_vectors_to_skeleton(
         sin_a = math.sin(angle)
         target_x = kp_coords[0] + (curr_dx * cos_a - curr_dy * sin_a)
         target_y = kp_coords[1] + (curr_dx * sin_a + curr_dy * cos_a)
-        
-        snapped_vectors.append({
-            "start": list(kp_coords),
-            "end": [target_x, target_y],
-            "color": "#34C759",
-            "label": "Target",
-            "is_correction": True,
-            "body_part": kp_name.replace("_", " ").title(),
-        })
+
+        snapped_vectors.append(
+            {
+                "start": list(kp_coords),
+                "end": [target_x, target_y],
+                "color": "#34C759",
+                "label": "Target",
+                "is_correction": True,
+                "body_part": kp_name.replace("_", " ").title(),
+            }
+        )
 
         # Store the correction angle in the visuals so the frontend can label it
         # The angle is always 30 degrees (our rotation hint constant)
         if "correction_annotations" not in visuals:
             visuals["correction_annotations"] = []
-        visuals["correction_annotations"].append({
-            "pivot": list(kp_coords),
-            "body_part": kp_name.replace("_", " ").title(),
-            "angle_deg": 30,
-        })
-        
-        print(f"[Snap] ✓ Generated correction pair for {kp_name} → {adjacent_name} (30° correction hint)")
+        visuals["correction_annotations"].append(
+            {
+                "pivot": list(kp_coords),
+                "body_part": kp_name.replace("_", " ").title(),
+                "angle_deg": 30,
+            }
+        )
+
+        print(
+            f"[Snap] ✓ Generated correction pair for {kp_name} → {adjacent_name} (30° correction hint)"
+        )
 
     # REPLACE all LLM vectors with our precisely-generated ones
     visuals["vectors"] = snapped_vectors
@@ -341,90 +349,6 @@ video_image = (
 
 app = modal.App("biomechanics-ai")
 
-# Temporary volume for storing videos briefly during streaming
-temp_volume = modal.Volume.from_name("video-temp", create_if_missing=True)
-
-import uuid
-import time as _cache_time
-
-
-def _generate_video_id() -> str:
-    """Generate unique video session ID."""
-    return str(uuid.uuid4())[:12]
-
-
-@app.function(
-    image=modal.Image.debian_slim().pip_install("fastapi", "python-multipart"),
-    volumes={"/tmp/video-cache": temp_volume},
-    timeout=600,
-)
-@modal.fastapi_endpoint(method="GET")
-async def get_video(video_id: str):
-    """Stream video file from volume cache.
-
-    Usage: GET /something?video_id={video_id}
-    """
-    try:
-        video_path = f"/tmp/video-cache/{video_id}.mp4"
-
-        import os
-        import mimetypes
-
-        if not os.path.exists(video_path):
-            print(f"[Video] Video {video_id} not found at {video_path}")
-            if os.path.exists("/tmp/video-cache"):
-                files = os.listdir("/tmp/video-cache")
-                print(f"[Video] Available files ({len(files)}): {files}")
-            else:
-                print(f"[Video] Cache directory does not exist")
-            return Response(
-                content=b"Video not found", status_code=404, media_type="text/plain"
-            )
-
-        # Get file size for proper streaming
-        file_size = os.path.getsize(video_path)
-        print(
-            f"[Video] File exists at {video_path}, size: {file_size / 1024 / 1024:.2f} MB"
-        )
-
-        # Read video from volume
-        with open(video_path, "rb") as f:
-            video_bytes = f.read()
-
-        print(f"[Video] Read {len(video_bytes) / 1024 / 1024:.2f} MB from disk")
-
-        if len(video_bytes) == 0:
-            print(f"[Video] ERROR: File is empty!")
-            return Response(
-                content=b"Video file is empty", status_code=500, media_type="text/plain"
-            )
-
-        if len(video_bytes) != file_size:
-            print(
-                f"[Video] WARNING: Read {len(video_bytes)} bytes but file size is {file_size}"
-            )
-
-        # Stream with proper headers for HTTP range requests
-        return Response(
-            content=video_bytes,
-            media_type="video/mp4",
-            headers={
-                "Content-Type": "video/mp4",
-                "Content-Length": str(len(video_bytes)),
-                "Content-Disposition": "inline",
-                "Cache-Control": "public, max-age=3600",
-                "Accept-Ranges": "bytes",
-            },
-        )
-    except Exception as e:
-        print(f"[Video] ⚠️  Video streaming error: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return Response(
-            content=b"Error streaming video", status_code=500, media_type="text/plain"
-        )
-
 
 @app.cls(
     gpu="B200",
@@ -463,6 +387,7 @@ class VideoAnalyzer:
         user_description: str,
         activity_type: str,
         previous_analysis: str = "",
+        voice_id: str = "s3TPKV1kjDlVtZbl4Ksh",
         pose_data: Optional[dict] = None,
     ):
         import time as _time
@@ -494,19 +419,30 @@ class VideoAnalyzer:
             "Analyze the user's body mechanics, posture, and movement pattern for this activity.",
         )
 
+        PERSONALITIES = {
+            # Adam
+            "s3TPKV1kjDlVtZbl4Ksh": "You are a supportive, human-centric coach who focuses on building a personal connection through storytelling. Give feedback that feels like a peer-to-peer conversation, emphasizing relatability and shared growth while maintaining a confident, grounded energy.",
+            # Brock
+            "DGzg6RaUqxGRTHSBjfgF": "You are a relentless, high-authority instructor who demands immediate results and zero excuses. Use short, barking commands and clipped sentences to push the user to their absolute limit with a loud, commanding cadence.",
+            # Maria
+            "vZzlAds9NzvLsFSWp0qk": "You are a calm, composed coach who provides feedback with emotional warmth and a gentle, steady rhythm. Focus on precise, clear instructions delivered with a smooth timbre that makes the user feel safe, capable, and mentally balanced.",
+            # Anya
+            "d3MFdIuCfbAIwiu7jC4a": "You are a fun, playful, and intelligent coach who brings a 'cool older sister' energy to every session. Use an approachable, cute tone with modern inflections to make the practice feel like a high-energy social hangout rather than a chore.",
+            # Jon
+            "Cz0K1kOv9tD8l0b5Qu53": "You are a relaxed, no-nonsense American coach who keeps things simple, natural, and easygoing. Avoid technical jargon or intense pressure; instead, offer clear, conversational advice that sounds like a casual chat over a backyard fence.",
+        }
+        personality = PERSONALITIES[voice_id]
+
         with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
             tmp.write(video_bytes)
             tmp.flush()
 
             # ── Build the coaching prompt ──
             is_retry = bool(previous_analysis)
-            prompt = f"""You are MotionCoach, a supportive and encouraging AI movement coach.
+            prompt = f"""You are MotionCoach, an AI movement coach.
 
 Your personality:
-- Warm, positive, and motivating — like a friendly personal trainer, NOT a drill sergeant
-- Always lead with what the user is doing WELL before suggesting corrections
-- Use concise, actionable language a beginner can understand
-- Reference specific body parts and timestamps so feedback is precise
+{personality} Reference specific body parts and timestamps so feedback is precise.
 
 Activity: {activity_type}
 {activity_hint}
@@ -529,7 +465,6 @@ INSTRUCTIONS FOR RETRY:
             else:
                 prompt += """\n=== NEW SESSION — FIRST ATTEMPT ===
 This is the user's first attempt at this movement. There is no previous session to compare to.
-- Be encouraging: this is their starting point, not a judgment
 - Do NOT include progress_score or improvement_delta — the backend computes these automatically
 """
 
@@ -732,7 +667,9 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
                 result.get("feedback_points", []),
                 key=lambda fp: fp.get("mistake_timestamp_ms", 0),
             )
-            print(f"[Analyze] ✓ Sorted {len(result['feedback_points'])} feedback points by timestamp (ascending)")
+            print(
+                f"[Analyze] ✓ Sorted {len(result['feedback_points'])} feedback points by timestamp (ascending)"
+            )
 
             # ── Deterministic score formula ─────────────────────────────────────
             #   progress_score = 100 - (n_major×12) - (n_intermediate×5) - (n_minor×2)
@@ -740,14 +677,16 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
             #   improvement_delta = current_score - previous_score  (null on first session)
             SEVERITY_PENALTIES = {"major": 12, "intermediate": 5, "minor": 2}
             fps = result.get("feedback_points", [])
-            n_major        = sum(1 for fp in fps if fp.get("severity") == "major")
-            n_intermediate = sum(1 for fp in fps if fp.get("severity") == "intermediate")
-            n_minor        = sum(1 for fp in fps if fp.get("severity") == "minor")
+            n_major = sum(1 for fp in fps if fp.get("severity") == "major")
+            n_intermediate = sum(
+                1 for fp in fps if fp.get("severity") == "intermediate"
+            )
+            n_minor = sum(1 for fp in fps if fp.get("severity") == "minor")
             raw_score = (
                 100
-                - n_major        * SEVERITY_PENALTIES["major"]
+                - n_major * SEVERITY_PENALTIES["major"]
                 - n_intermediate * SEVERITY_PENALTIES["intermediate"]
-                - n_minor        * SEVERITY_PENALTIES["minor"]
+                - n_minor * SEVERITY_PENALTIES["minor"]
             )
             computed_score = max(10, min(100, raw_score))
 
@@ -769,7 +708,9 @@ Example: {"status":"success","positive_note":"Good form!","feedback_points":[{"m
                 f" = {raw_score} → clamped → {computed_score}"
             )
             if improvement_delta is not None:
-                print(f"[Analyze] 📈 improvement_delta = {improvement_delta:+d} (prev={prev_score}, curr={computed_score})")
+                print(
+                    f"[Analyze] 📈 improvement_delta = {improvement_delta:+d} (prev={prev_score}, curr={computed_score})"
+                )
             else:
                 print(f"[Analyze] 📈 improvement_delta = null (first session)")
             # ───────────────────────────────────────────────────────────────────
@@ -1266,6 +1207,7 @@ async def analyze(request: Request):
             activity_type=activity_type,
             previous_analysis=previous_analysis_str,
             pose_data=pose_data,
+            voice_id=elevenlabs_voice_id,
         )
         t_llm_end = _time.time()
         print(f"[Endpoint] ✅ VL analysis complete in {t_llm_end - t_llm_start:.1f}s")
@@ -1358,50 +1300,12 @@ async def analyze(request: Request):
         traceback.print_exc()
 
     # 6. Construct Final Response
-    # Store video in Modal volume for streaming
-    video_id = _generate_video_id()
-    video_path = f"/tmp/video-cache/{video_id}.mp4"
-
-    import os
-
-    os.makedirs("/tmp/video-cache", exist_ok=True)
-
-    # Write video file with proper flushing
-    try:
-        with open(video_path, "wb") as f:
-            f.write(video_bytes)
-            f.flush()  # Ensure data is written to disk
-            os.fsync(f.fileno())  # Force sync to disk
-
-        # Verify file was written
-        written_size = os.path.getsize(video_path)
-        print(
-            f"[Endpoint] 📹 Wrote video {video_id}: {written_size / 1024 / 1024:.2f} MB"
-        )
-
-        if written_size != len(video_bytes):
-            print(
-                f"[Endpoint] ⚠️  WARNING: Wrote {written_size} bytes but original was {len(video_bytes)} bytes"
-            )
-    except Exception as e:
-        print(f"[Endpoint] ❌ Failed to write video file: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise
-
-    # Get the deployed endpoint URL for video streaming (query parameter style)
-    video_url = f"https://kevinhyang2006--biomechanics-ai-get-video.modal.run?video_id={video_id}"
-
-    print(f"[Endpoint] 🔗 Video URL: {video_url}")
-
     final_feedback_points = []
     for fp, audio_b64 in zip(feedback_points, audio_results):
         fp_copy = fp.copy()
         fp_copy["audio_url"] = (
             f"data:audio/mpeg;base64,{audio_b64}" if audio_b64 else ""
         )
-        fp_copy["video_url"] = video_url
         final_feedback_points.append(fp_copy)
 
     llm_response["feedback_points"] = final_feedback_points
