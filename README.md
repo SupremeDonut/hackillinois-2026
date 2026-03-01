@@ -237,12 +237,12 @@ The LoRA adapter is automatically downloaded locally after training and can opti
 │   React Native    │  HTTPS  │              Modal (GPU)                  │
 │   (Expo)          │◄───────►│                                           │
 │                   │         │  ┌──────────────┐   ┌──────────────────┐  │
-│  expo-camera      │         │  │ MediaPipe /  │──►│  Qwen3-VL-32B   │  │
+│  expo-camera      │         │  │ MediaPipe /  │──►│  Qwen3-VL-32B    │  │
 │  expo-av          │         │  │ YOLO Pose    │   │  (VLM Reasoning) │  │
 │  react-native-svg │         │  └──────────────┘   └──────────────────┘  │
-│                   │         │                  ┌──────────────────┐      │
-│                   │         │                  │  ElevenLabs TTS  │      │
-└───────────────────┘         │                  └──────────────────┘      │
+│                   │         │                  ┌──────────────────┐     │
+│                   │         │                  │  ElevenLabs TTS  │     │
+└───────────────────┘         │                  └──────────────────┘     │
                               └───────────────────────────────────────────┘
 ```
 
